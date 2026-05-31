@@ -56,7 +56,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'apps.users.middleware.SupabaseAuthMiddleware',
+    'users.middlewares.SupabaseAuthMiddleware',
     'corsheaders.middleware.CorsMiddleware',
 ]
 
@@ -83,17 +83,11 @@ WSGI_APPLICATION = 'core.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'postgres',
-        'USER': 'postgres.tpenvskjpsdtkwmlafrk',
-        'PASSWORD': os.getenv('DB_PASSWORD'),
-        'HOST': 'aws-0-ap-south-1.pooler.supabase.com',
-        'PORT': '6543',
-    }
-}
+import dj_database_url
 
+DATABASES = {
+    'default': dj_database_url.parse(os.getenv('DATABASE_URL'))
+}
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
@@ -149,3 +143,4 @@ CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',  # Vite React
     'http://localhost:3000',
 ]
+
