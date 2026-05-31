@@ -27,14 +27,14 @@ def signup(request):
         # Dono fields zaroori hain
         if not email or not password:
             return Response(
-                {'error': 'Email aur password dono zaroori hain'},
+                {'error': 'Both email and password are required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         # Password kam se kam 6 characters ka hona chahiye
         if len(password) < 6:
             return Response(
-                {'error': 'Password kam se kam 6 characters ka hona chahiye'},
+                {'error': 'Password must be at least 6 characters long'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -47,14 +47,14 @@ def signup(request):
         # Agar user already exist karta hai
         if response.user is None:
             return Response(
-                {'error': 'Kuch gadbad hui, dobara try karo'},
+                {'error': 'Something went wrong, please try again'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         # --- Success ---
         return Response(
             {
-                'message': 'Account ban gaya! Email verify karo.',
+                'message': 'Account created! Please verify your email.',
                 'user': {
                     'id': str(response.user.id),
                     'email': response.user.email,
@@ -68,7 +68,7 @@ def signup(request):
         # User ko internal error details nahi dikhani chahiye
         logger.error(f"Signup error: {str(e)}")
         return Response(
-            {'error': 'Server error aaya, baad mein try karo'},
+            {'error': 'Server error occurred, please try again later'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
@@ -86,7 +86,7 @@ def login(request):
         # --- Validation ---
         if not email or not password:
             return Response(
-                {'error': 'Email aur password dono zaroori hain'},
+                {'error': 'Both email and password are required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -101,7 +101,7 @@ def login(request):
         # Aur har request mein Authorization header mein bhejega
         return Response(
             {
-                'message': 'Login ho gaya!',
+                'message': 'Login successful!',
                 'access_token': response.session.access_token,
                 'refresh_token': response.session.refresh_token,
                 'user': {
@@ -119,12 +119,12 @@ def login(request):
         # "Invalid login credentials" Supabase ka default error hai
         if 'Invalid login credentials' in str(e):
             return Response(
-                {'error': 'Email ya password galat hai'},
+                {'error': 'Invalid email or password'},
                 status=status.HTTP_401_UNAUTHORIZED
             )
 
         return Response(
-            {'error': 'Server error aaya, baad mein try karo'},
+            {'error': 'Server error occurred, please try again later'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
@@ -152,7 +152,7 @@ def me(request):
     except Exception as e:
         logger.error(f"Me endpoint error: {str(e)}")
         return Response(
-            {'error': 'User details nahi mil payi'},
+            {'error': 'User details not found'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
@@ -168,14 +168,14 @@ def logout(request):
         supabase.auth.sign_out()
 
         return Response(
-            {'message': 'Logout ho gaya!'},
+            {'message': 'Logout successful!'},
             status=status.HTTP_200_OK
         )
 
     except Exception as e:
         logger.error(f"Logout error: {str(e)}")
         return Response(
-            {'error': 'Logout mein problem aayi'},
+            {'error': 'Server error occurred, please try again later'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
         
@@ -206,7 +206,7 @@ def github_login(request):
     except Exception as e:
         logger.error(f"GitHub login error: {str(e)}")
         return Response(
-            {'error': 'GitHub login mein problem aayi'},
+            {'error': 'Server error occurred, please try again later'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
@@ -222,7 +222,7 @@ def auth_callback(request):
 
         if not code:
             return Response(
-                {'error': 'Code nahi mila'},
+                {'error': 'Code not found'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -244,6 +244,6 @@ def auth_callback(request):
     except Exception as e:
         logger.error(f"Auth callback error: {str(e)}")
         return Response(
-            {'error': 'Authentication fail ho gayi'},
+            {'error': 'Authentication failed, please try again later'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
