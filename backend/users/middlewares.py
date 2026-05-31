@@ -1,5 +1,5 @@
 from django.http import JsonResponse
-from supabase import create_client
+from supabase import create_client # type: ignore
 from django.conf import settings
 
 # Supabase client banana - service key use karenge kyunki
