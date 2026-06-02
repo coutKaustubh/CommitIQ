@@ -45,6 +45,7 @@ NEW_APPS = [
     'rest_framework',
     'corsheaders',
     'users',
+    'repos',
 ]
 
 INSTALLED_APPS += NEW_APPS
