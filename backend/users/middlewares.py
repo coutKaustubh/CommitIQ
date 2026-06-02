@@ -11,6 +11,8 @@ supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_KEY)
 EXEMPT_ROUTES = [
     '/api/users/signup/',
     '/api/users/login/',
+    '/api/users/github-login/', 
+    '/api/users/callback/',    
 ]
 
 class SupabaseAuthMiddleware:

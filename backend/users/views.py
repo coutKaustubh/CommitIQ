@@ -5,6 +5,8 @@ from supabase import create_client # type: ignore
 from django.conf import settings
 import logging
 
+from repos.models import UserProfile
+
 # Logger setup - errors track karne ke liye
 logger = logging.getLogger(__name__)
 
@@ -132,19 +134,38 @@ def login(request):
 @api_view(['GET'])
 def me(request):
     """
-    Logged in user ki apni details dekhna
-    Yeh route protected hai - middleware token verify karega
+    Logged in user ki apni details dekhna.
+    Protected route — middleware token verify karta hai.
+    UserProfile DB row get_or_create (Supabase user bridge).
     """
     try:
         # Middleware ne pehle se verify kar diya hai
         # aur request.supabase_user mein daal diya hai
         user = request.supabase_user
 
+        if not user.email:
+            return Response(
+                {'error': 'Account email not available'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        profile, profile_created = UserProfile.objects.get_or_create(
+            supabase_user_id=user.id,
+            defaults={'email': user.email},
+        )
+
+        if not profile_created and profile.email != user.email:
+            profile.email = user.email
+            profile.save(update_fields=['email', 'updated_at'])
+
         return Response(
             {
                 'id': str(user.id),
                 'email': user.email,
                 'created_at': str(user.created_at),
+                'profile_id': profile.id,
+                'github_username': profile.github_username,
+                'profile_created': profile_created,
             },
             status=status.HTTP_200_OK
         )
