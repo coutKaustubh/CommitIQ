@@ -19,3 +19,6 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# Personal roadmap (local only)
+commitiq_mvp_roadmap_f6f0e3d7.plan.md
