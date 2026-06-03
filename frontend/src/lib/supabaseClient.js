@@ -1,0 +1,18 @@
+import { createClient } from '@supabase/supabase-js'
+
+const url = import.meta.env.VITE_SUPABASE_URL
+const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+if (!url || !anonKey) {
+  console.warn(
+    'Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY in frontend/.env — GitHub login will not work.',
+  )
+}
+
+export const supabase = createClient(url || '', anonKey || '', {
+  auth: {
+    flowType: 'pkce',
+    detectSessionInUrl: true,
+    persistSession: true,
+  },
+})

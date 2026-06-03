@@ -1,12 +1,9 @@
-import { Link } from 'react-router-dom'
-import { clearSession, isLoggedIn } from '../utils/auth.js'
+import { Link, Navigate } from 'react-router-dom'
+import { isLoggedIn } from '../utils/auth.js'
 
 function Home() {
-  const loggedIn = isLoggedIn()
-
-  function handleLogout() {
-    clearSession()
-    window.location.reload()
+  if (isLoggedIn()) {
+    return <Navigate to="/dashboard" replace />
   }
 
   return (
@@ -17,28 +14,16 @@ function Home() {
       </header>
 
       <main className="card">
-        <h2>Frontend is running</h2>
-        {loggedIn ? (
-          <>
-            <p className="success">You are logged in. Token saved in localStorage.</p>
-            <p className="hint">Phase 3: protected dashboard + /me call.</p>
-            <button type="button" className="btn btn-secondary" onClick={handleLogout}>
-              Log out (clear token)
-            </button>
-          </>
-        ) : (
-          <>
-            <p>Sign in to connect your repos and see analysis.</p>
-            <div className="btn-row">
-              <Link className="btn btn-primary" to="/login">
-                Login
-              </Link>
-              <Link className="btn btn-secondary" to="/signup">
-                Sign up
-              </Link>
-            </div>
-          </>
-        )}
+        <h2>Get started</h2>
+        <p>Sign in to connect your repos and see analysis.</p>
+        <div className="btn-row">
+          <Link className="btn btn-primary" to="/login">
+            Login
+          </Link>
+          <Link className="btn btn-secondary" to="/signup">
+            Sign up
+          </Link>
+        </div>
       </main>
     </div>
   )
