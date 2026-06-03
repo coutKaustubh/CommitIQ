@@ -1,0 +1,44 @@
+frontend/
+├── .env                    ← VITE_API_URL, VITE_SUPABASE_URL, keys (gitignore)
+├── index.html              ← browser entry, <div id="root">
+├── vite.config.js          ← React dev server port 5173
+├── package.json            ← npm packages (react, supabase-js, router)
+│
+└── src/
+    ├── main.jsx            ← START: React app yahan mount hota hai
+    ├── App.jsx             ← ROUTES: kaunsi URL → kaunsa page
+    ├── index.css           ← styling (colors, buttons, dashboard layout)
+    │
+    ├── api/
+    │   └── client.js       ← Django ko call: fetch + Bearer token
+    │
+    ├── lib/
+    │   └── supabaseClient.js  ← GitHub OAuth (Supabase browser client)
+    │
+    ├── utils/
+    │   └── auth.js         ← token save/clear localStorage mein
+    │
+    ├── pages/              ← poora screen (1 page = 1 file)
+    │   ├── Home.jsx        ← landing, Login/Signup links
+    │   ├── Login.jsx       ← email login + GitHub button
+    │   ├── Signup.jsx      ← naya account
+    │   ├── AuthCallback.jsx ← GitHub wapas aane ke baad
+    │   └── Dashboard.jsx   ← logged-in home, /me call
+    │
+    └── components/         ← chhoti reusable pieces
+        ├── ProtectedRoute.jsx  ← bina token → login redirect
+        ├── GuestRoute.jsx      ← logged in + login page → dashboard
+        ├── OAuthRedirect.jsx   ← ?code= galat page pe ho to callback pe bhejo
+        └── Layout.jsx          ← sidebar + logout
+
+
+
+
+
+pages/       → 1 route = 1 screen (Login, Dashboard)
+components/  → baar-baar use (button, sidebar, modal, ProtectedRoute)
+api/         → fetch/axios wrappers → YOUR backend
+lib/         → createClient(Supabase, Firebase, Stripe…)
+utils/       → chhoti pure functions (format date, auth helpers)
+hooks/       → custom React hooks (baad mein add kar sakte ho)
+context/     → global state (user logged in?) — abhi khali
