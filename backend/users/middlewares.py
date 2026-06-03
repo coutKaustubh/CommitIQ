@@ -21,6 +21,10 @@ class SupabaseAuthMiddleware:
 
     def __call__(self, request):
 
+        # Browser CORS preflight — token nahi hota, block mat karo
+        if request.method == 'OPTIONS':
+            return self.get_response(request)
+
         # Exempt routes ko skip karo
         if request.path in EXEMPT_ROUTES:
             return self.get_response(request)
