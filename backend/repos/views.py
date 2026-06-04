@@ -64,9 +64,7 @@ def parse_github_datetime(value):
     dt = parse_datetime(normalized)
     if dt is None:
         return timezone.now()
-    if timezone.is_naive(dt):
-        return timezone.make_aware(dt)
-    return dt
+    return timezone.make_aware(dt) if timezone.is_naive(dt) else dt
 
 
 def get_connected_repository(profile, repo_id):
