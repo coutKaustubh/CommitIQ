@@ -1,11 +1,13 @@
 import logging
 
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from .github_client import github_request
-from .models import Repository, UserProfile
+from .models import Commit, Repository, UserProfile
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +43,66 @@ def serialize_repository(repo):
         "is_active": repo.is_active,
         "created_at": repo.created_at.isoformat(),
     }
+
+
+def serialize_commit(commit):
+    return {
+        "id": commit.id,
+        "sha": commit.sha,
+        "short_sha": commit.sha[:7],
+        "message": commit.message,
+        "author_name": commit.author_name,
+        "committed_at": commit.committed_at.isoformat(),
+        "html_url": commit.html_url,
+    }
+
+
+def parse_github_datetime(value):
+    if not value:
+        return timezone.now()
+    normalized = value.replace("Z", "+00:00")
+    dt = parse_datetime(normalized)
+    if dt is None:
+        return timezone.now()
+    if timezone.is_naive(dt):
+        return timezone.make_aware(dt)
+    return dt
+
+
+def get_connected_repository(profile, repo_id):
+    try:
+        return Repository.objects.get(
+            id=repo_id,
+            owner=profile,
+            is_active=True,
+        )
+    except Repository.DoesNotExist:
+        return None
+
+
+def sync_commits_from_github(repository, items):
+    """Upsert commits from GitHub API response into DB."""
+    for item in items:
+        sha = item.get("sha")
+        if not sha:
+            continue
+        commit_data = item.get("commit") or {}
+        author = commit_data.get("author") or {}
+        message = (commit_data.get("message") or "").strip()
+        author_name = author.get("name") or ""
+        committed_at = parse_github_datetime(author.get("date"))
+        html_url = item.get("html_url") or ""
+
+        Commit.objects.update_or_create(
+            repository=repository,
+            sha=sha,
+            defaults={
+                "message": message,
+                "author_name": author_name,
+                "committed_at": committed_at,
+                "html_url": html_url,
+            },
+        )
 
 
 @api_view(["GET"])
@@ -82,9 +144,10 @@ def list_github_repos(request):
             status=status.HTTP_502_BAD_GATEWAY,
         )
 
-    connected = set(
-        profile.repositories.filter(is_active=True).values_list("full_name", flat=True)
-    )
+    connected_by_name = {
+        r.full_name: r.id
+        for r in profile.repositories.filter(is_active=True)
+    }
 
     repos = []
     for item in response.json():
@@ -96,7 +159,8 @@ def list_github_repos(request):
                 "private": bool(item.get("private")),
                 "html_url": item.get("html_url"),
                 "description": item.get("description") or "",
-                "connected": full_name in connected,
+                "connected": full_name in connected_by_name,
+                "db_id": connected_by_name.get(full_name),
             }
         )
 
@@ -205,5 +269,60 @@ def disconnect_repo(request):
 
     return Response(
         {"message": "Repository disconnected", "repository": serialize_repository(repo)},
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["GET"])
+def list_repo_commits(request, repo_id):
+    """
+    Latest commits for a connected repository (GitHub API + DB cache).
+    """
+    profile, err = require_profile_with_github(request)
+    if err:
+        return err
+
+    repository = get_connected_repository(profile, repo_id)
+    if not repository:
+        return Response(
+            {"error": "Connected repository not found", "code": "repo_not_found"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    token = profile.github_access_token
+    path = f"/repos/{repository.full_name}/commits"
+    response = github_request("GET", path, token, params={"per_page": 20})
+
+    if response.status_code == 401:
+        return Response(
+            {
+                "error": "GitHub token expired or revoked. Sign in with GitHub again.",
+                "code": "github_token_invalid",
+            },
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    if not response.ok:
+        logger.error(
+            "GitHub commits API error for %s: %s %s",
+            repository.full_name,
+            response.status_code,
+            response.text[:500],
+        )
+        return Response(
+            {"error": "Could not load commits from GitHub."},
+            status=status.HTTP_502_BAD_GATEWAY,
+        )
+
+    items = response.json()
+    sync_commits_from_github(repository, items)
+
+    commits = list(repository.commits.order_by("-committed_at")[:20])
+    return Response(
+        {
+            "repository": serialize_repository(repository),
+            "commits": [serialize_commit(c) for c in commits],
+            "count": len(commits),
+        },
         status=status.HTTP_200_OK,
     )

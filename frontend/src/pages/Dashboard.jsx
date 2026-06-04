@@ -6,6 +6,7 @@ import Layout from '../components/Layout.jsx'
 function Dashboard() {
   const [user, setUser] = useState(null)
   const [connected, setConnected] = useState([])
+  const [recentCommits, setRecentCommits] = useState([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
 
@@ -20,7 +21,16 @@ function Dashboard() {
         ])
         if (!cancelled) {
           setUser(me)
-          setConnected(reposData.connected || [])
+          const list = reposData.connected || []
+          setConnected(list)
+          if (list.length > 0) {
+            try {
+              const commitsData = await api(`/api/repos/${list[0].id}/commits/`)
+              if (!cancelled) setRecentCommits((commitsData.commits || []).slice(0, 5))
+            } catch {
+              if (!cancelled) setRecentCommits([])
+            }
+          }
         }
       } catch (err) {
         if (!cancelled) {
@@ -66,8 +76,8 @@ function Dashboard() {
 
       <section className="stats-grid">
         <div className="stat-card card">
-          <span className="stat-label">Commits this week</span>
-          <span className="stat-value">0</span>
+          <span className="stat-label">Recent commits loaded</span>
+          <span className="stat-value">{recentCommits.length}</span>
         </div>
         <div className="stat-card card">
           <span className="stat-label">Regressions found</span>
@@ -97,6 +107,21 @@ function Dashboard() {
           <Link to="/repositories" className="hint" style={{ display: 'inline-block', marginTop: '0.75rem' }}>
             Manage repositories →
           </Link>
+        </section>
+      )}
+
+      {recentCommits.length > 0 && (
+        <section className="card" style={{ marginTop: '1.5rem' }}>
+          <h2>Recent commits{connected[0] ? ` — ${connected[0].full_name}` : ''}</h2>
+          <ul className="dashboard-commits-list">
+            {recentCommits.map((c) => (
+              <li key={c.sha}>
+                <code className="commit-sha">{c.short_sha}</code>{' '}
+                <span className="commit-message-inline">{c.message.split('\n')[0]}</span>
+                <span className="hint"> — {c.author_name}</span>
+              </li>
+            ))}
+          </ul>
         </section>
       )}
     </Layout>

@@ -52,3 +52,31 @@ class Repository(models.Model):
 
     def __str__(self):
         return self.full_name
+
+
+class Commit(models.Model):
+    """A commit on a connected repository (synced from GitHub)."""
+
+    repository = models.ForeignKey(
+        Repository,
+        on_delete=models.CASCADE,
+        related_name="commits",
+    )
+    sha = models.CharField(max_length=40)
+    message = models.TextField()
+    author_name = models.CharField(max_length=255, blank=True, default="")
+    committed_at = models.DateTimeField()
+    html_url = models.URLField(max_length=512, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-committed_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["repository", "sha"],
+                name="unique_commit_per_repo",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.repository.full_name}@{self.sha[:7]}"

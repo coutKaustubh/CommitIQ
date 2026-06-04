@@ -341,6 +341,82 @@ body {
   margin-bottom: 0.35rem;
 }
 
+.commits-panel {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #2d3a4d;
+}
+
+.commits-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.commits-panel-header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.commits-table-wrap {
+  overflow-x: auto;
+}
+
+.commits-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.commits-table th,
+.commits-table td {
+  padding: 0.5rem 0.65rem;
+  text-align: left;
+  border-bottom: 1px solid #2d3a4d;
+  vertical-align: top;
+}
+
+.commits-table th {
+  color: #9aa0a6;
+  font-weight: 500;
+  font-size: 0.8rem;
+}
+
+.commit-sha {
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+  color: #7eb8ff;
+  text-decoration: none;
+}
+
+.commit-message {
+  max-width: 320px;
+  word-break: break-word;
+}
+
+.commit-date {
+  white-space: nowrap;
+  color: #9aa0a6;
+  font-size: 0.85rem;
+}
+
+.dashboard-commits-list {
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dashboard-commits-list li {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #2d3a4d;
+}
+
+.commit-message-inline {
+  color: #e8eaed;
+}
+
 .repo-name {
   font-weight: 600;
   color: #7eb8ff;

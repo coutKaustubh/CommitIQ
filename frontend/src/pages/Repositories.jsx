@@ -4,6 +4,7 @@ import { api } from '../api/client.js'
 import Layout from '../components/Layout.jsx'
 import { sessionIsGitHubOAuth, syncGitHubToken } from '../utils/github.js'
 import { supabase } from '../lib/supabaseClient.js'
+import CommitsList from '../components/CommitsList.jsx'
 
 function Repositories() {
   const [repos, setRepos] = useState([])
@@ -14,6 +15,7 @@ function Repositories() {
   const [error, setError] = useState('')
   const [needsGitHubLogin, setNeedsGitHubLogin] = useState(false)
   const [actionId, setActionId] = useState(null)
+  const [commitsRepo, setCommitsRepo] = useState(null)
 
   const loadRepos = useCallback(async () => {
     setError('')
@@ -69,12 +71,15 @@ function Repositories() {
     setActionId(repo.id)
     setError('')
     try {
-      await api('/api/repos/connect/', {
+      const res = await api('/api/repos/connect/', {
         method: 'POST',
         body: JSON.stringify({ github_id: repo.id, full_name: repo.full_name }),
       })
+      const dbId = res.repository?.id
       setRepos((prev) =>
-        prev.map((r) => (r.id === repo.id ? { ...r, connected: true } : r)),
+        prev.map((r) =>
+          r.id === repo.id ? { ...r, connected: true, db_id: dbId ?? r.db_id } : r,
+        ),
       )
     } catch (err) {
       setError(err.message || 'Could not connect repository')
@@ -91,8 +96,11 @@ function Repositories() {
         method: 'POST',
         body: JSON.stringify({ full_name: repo.full_name }),
       })
+      if (commitsRepo?.githubId === repo.id) setCommitsRepo(null)
       setRepos((prev) =>
-        prev.map((r) => (r.id === repo.id ? { ...r, connected: false } : r)),
+        prev.map((r) =>
+          r.id === repo.id ? { ...r, connected: false, db_id: null } : r,
+        ),
       )
     } catch (err) {
       setError(err.message || 'Could not disconnect repository')
@@ -151,6 +159,21 @@ function Repositories() {
                   {repo.connected && <span className="repo-badge repo-badge-connected">Connected</span>}
                 </div>
                 <div className="repo-actions">
+                  {repo.connected && repo.db_id && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() =>
+                        setCommitsRepo(
+                          commitsRepo?.dbId === repo.db_id
+                            ? null
+                            : { dbId: repo.db_id, fullName: repo.full_name, githubId: repo.id },
+                        )
+                      }
+                    >
+                      {commitsRepo?.dbId === repo.db_id ? 'Hide commits' : 'View commits'}
+                    </button>
+                  )}
                   {repo.connected ? (
                     <button
                       type="button"
@@ -173,6 +196,13 @@ function Repositories() {
                 </div>
               </div>
               {repo.description && <p className="repo-desc">{repo.description}</p>}
+              {commitsRepo?.dbId === repo.db_id && (
+                <CommitsList
+                  dbId={repo.db_id}
+                  fullName={repo.full_name}
+                  onClose={() => setCommitsRepo(null)}
+                />
+              )}
             </li>
           ))}
         </ul>

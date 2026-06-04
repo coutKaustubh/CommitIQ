@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Repository, UserProfile
+from .models import Commit, Repository, UserProfile
 
 
 @admin.register(UserProfile)
@@ -15,3 +15,15 @@ class RepositoryAdmin(admin.ModelAdmin):
     list_display = ("full_name", "owner", "github_id", "is_active", "created_at")
     list_filter = ("is_active",)
     search_fields = ("full_name", "owner__email")
+
+
+@admin.register(Commit)
+class CommitAdmin(admin.ModelAdmin):
+    list_display = ("short_sha_display", "repository", "author_name", "committed_at")
+    list_filter = ("repository",)
+    search_fields = ("sha", "message", "repository__full_name")
+    readonly_fields = ("sha", "created_at")
+
+    @admin.display(description="SHA")
+    def short_sha_display(self, obj):
+        return obj.sha[:7]
