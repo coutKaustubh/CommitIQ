@@ -1,19 +1,27 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api } from '../api/client.js'
 import Layout from '../components/Layout.jsx'
 
 function Dashboard() {
   const [user, setUser] = useState(null)
+  const [connected, setConnected] = useState([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
 
-    async function loadMe() {
+    async function load() {
       try {
-        const data = await api('/api/users/me/')
-        if (!cancelled) setUser(data)
+        const [me, reposData] = await Promise.all([
+          api('/api/users/me/'),
+          api('/api/repos/connected/').catch(() => ({ connected: [] })),
+        ])
+        if (!cancelled) {
+          setUser(me)
+          setConnected(reposData.connected || [])
+        }
       } catch (err) {
         if (!cancelled) {
           setError(err.message || 'Could not load profile')
@@ -28,7 +36,7 @@ function Dashboard() {
       }
     }
 
-    loadMe()
+    load()
     return () => {
       cancelled = true
     }
@@ -71,10 +79,26 @@ function Dashboard() {
         </div>
       </section>
 
-      <section className="card empty-state">
-        <h2>No repositories connected</h2>
-        <p className="hint">Week 2: connect GitHub repos to start analysis.</p>
-      </section>
+      {connected.length === 0 ? (
+        <section className="card empty-state">
+          <h2>No repositories connected</h2>
+          <p className="hint">
+            <Link to="/repositories">Connect GitHub repos</Link> to start tracking commits.
+          </p>
+        </section>
+      ) : (
+        <section className="card">
+          <h2>Connected repositories ({connected.length})</h2>
+          <ul className="connected-repo-names">
+            {connected.map((repo) => (
+              <li key={repo.id}>{repo.full_name}</li>
+            ))}
+          </ul>
+          <Link to="/repositories" className="hint" style={{ display: 'inline-block', marginTop: '0.75rem' }}>
+            Manage repositories →
+          </Link>
+        </section>
+      )}
     </Layout>
   )
 }

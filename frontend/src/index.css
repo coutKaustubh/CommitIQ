@@ -310,11 +310,35 @@ body {
   margin: 0;
 }
 
+.repo-list-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
 .repo-list-main {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.repo-actions {
+  flex-shrink: 0;
+}
+
+.connected-repo-names {
+  margin: 0.75rem 0 0;
+  padding-left: 1.25rem;
+  color: #e8eaed;
+}
+
+.connected-repo-names li {
+  margin-bottom: 0.35rem;
 }
 
 .repo-name {
