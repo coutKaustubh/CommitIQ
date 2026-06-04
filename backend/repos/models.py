@@ -10,6 +10,11 @@ class UserProfile(models.Model):
     supabase_user_id = models.UUIDField(unique=True)
     email = models.EmailField()
     github_username = models.CharField(max_length=255, blank=True, default="")
+    github_access_token = models.TextField(
+        blank=True,
+        default="",
+        help_text="GitHub OAuth token from Supabase session (provider_token).",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

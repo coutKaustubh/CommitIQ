@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient.js'
+import { api } from '../api/client.js'
 import { saveSession } from '../utils/auth.js'
 
 function parseHashParams() {
@@ -22,13 +23,23 @@ function AuthCallback() {
   useEffect(() => {
     let finished = false
 
-    function goDashboard(session) {
+    async function goDashboard(session) {
       if (finished) return
       finished = true
       saveSession({
         access_token: session.access_token,
         refresh_token: session.refresh_token,
       })
+      if (session.provider_token) {
+        try {
+          await api('/api/users/sync-github-token/', {
+            method: 'POST',
+            body: JSON.stringify({ github_access_token: session.provider_token }),
+          })
+        } catch {
+          // Repositories page will retry sync
+        }
+      }
       window.history.replaceState({}, '', '/dashboard')
       navigate('/dashboard', { replace: true })
     }

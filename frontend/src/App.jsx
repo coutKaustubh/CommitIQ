@@ -6,6 +6,7 @@ import Home from './pages/Home.jsx'
 import Login from './pages/Login.jsx'
 import Signup from './pages/Signup.jsx'
 import Dashboard from './pages/Dashboard.jsx'
+import Repositories from './pages/Repositories.jsx'
 import AuthCallback from './pages/AuthCallback.jsx'
 
 function App() {
@@ -36,6 +37,14 @@ function App() {
         element={
           <ProtectedRoute>
             <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/repositories"
+        element={
+          <ProtectedRoute>
+            <Repositories />
           </ProtectedRoute>
         }
       />

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api/client.js'
 import { supabase } from '../lib/supabaseClient.js'
 import { saveSession } from '../utils/auth.js'
+import { clearSupabaseAuthSession } from '../utils/github.js'
 
 function Login() {
   const navigate = useNavigate()
@@ -42,6 +43,7 @@ function Login() {
     setError('')
     setLoading(true)
     try {
+      await clearSupabaseAuthSession()
       const data = await api('/api/users/login/', {
         method: 'POST',
         body: JSON.stringify({ email, password }),

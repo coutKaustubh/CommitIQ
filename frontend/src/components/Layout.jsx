@@ -8,7 +8,7 @@ function Layout({ children, userEmail }) {
     if (isLoggedIn()) {
       await logoutApi()
     }
-    clearSession()
+    await clearSession()
     navigate('/login')
   }
 
@@ -20,9 +20,12 @@ function Layout({ children, userEmail }) {
           <NavLink to="/dashboard" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')} end>
             Dashboard
           </NavLink>
-          <span className="nav-link disabled" title="Week 2">
+          <NavLink
+            to="/repositories"
+            className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}
+          >
             Repositories
-          </span>
+          </NavLink>
           <span className="nav-link disabled" title="Week 5">
             Ask AI
           </span>

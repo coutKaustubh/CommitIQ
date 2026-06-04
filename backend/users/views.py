@@ -6,6 +6,7 @@ from django.conf import settings
 import logging
 
 from repos.models import UserProfile
+from repos.github_client import fetch_github_user_login
 
 # Logger setup - errors track karne ke liye
 logger = logging.getLogger(__name__)
@@ -98,9 +99,17 @@ def login(request):
             "password": password
         })
 
+        # Email login has no GitHub provider token — clear stale token from past OAuth
+        profile, _ = UserProfile.objects.get_or_create(
+            supabase_user_id=response.user.id,
+            defaults={'email': response.user.email or email},
+        )
+        if profile.github_access_token or profile.github_username:
+            profile.github_access_token = ''
+            profile.github_username = ''
+            profile.save(update_fields=['github_access_token', 'github_username', 'updated_at'])
+
         # --- Token frontend ko dena ---
-        # Frontend yeh token localStorage mein save karega
-        # Aur har request mein Authorization header mein bhejega
         return Response(
             {
                 'message': 'Login successful!',
@@ -165,6 +174,7 @@ def me(request):
                 'created_at': str(user.created_at),
                 'profile_id': profile.id,
                 'github_username': profile.github_username,
+                'has_github_token': bool(profile.github_access_token),
                 'profile_created': profile_created,
             },
             status=status.HTTP_200_OK
@@ -175,6 +185,56 @@ def me(request):
         return Response(
             {'error': 'User details not found'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+def sync_github_token(request):
+    """
+    Save GitHub OAuth provider token from Supabase session (frontend sends after GitHub login).
+    Body: { "github_access_token": "..." }
+    """
+    try:
+        user = request.supabase_user
+        token = (request.data.get('github_access_token') or '').strip()
+
+        if not token:
+            return Response(
+                {'error': 'github_access_token is required'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not user.email:
+            return Response(
+                {'error': 'Account email not available'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        profile, _ = UserProfile.objects.get_or_create(
+            supabase_user_id=user.id,
+            defaults={'email': user.email},
+        )
+
+        profile.github_access_token = token
+        login = fetch_github_user_login(token)
+        if login:
+            profile.github_username = login
+        profile.save(update_fields=['github_access_token', 'github_username', 'updated_at'])
+
+        return Response(
+            {
+                'message': 'GitHub token saved',
+                'github_username': profile.github_username,
+                'has_github_token': True,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    except Exception as e:
+        logger.error(f"sync_github_token error: {str(e)}")
+        return Response(
+            {'error': 'Could not save GitHub token'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
 

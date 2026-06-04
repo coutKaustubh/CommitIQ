@@ -296,3 +296,57 @@ body {
   margin-top: 0;
   font-size: 1.1rem;
 }
+
+.repo-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.repo-list-item {
+  margin: 0;
+}
+
+.repo-list-main {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.repo-name {
+  font-weight: 600;
+  color: #7eb8ff;
+  text-decoration: none;
+}
+
+.repo-name:hover {
+  text-decoration: underline;
+}
+
+.repo-badge {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  background: #2d3a4d;
+  color: #9aa0a6;
+}
+
+.repo-badge-connected {
+  background: #1a3d2e;
+  color: #7ee787;
+}
+
+.repo-desc {
+  margin: 0.5rem 0 0;
+  font-size: 0.9rem;
+  color: #9aa0a6;
+}
+
+.repo-phase-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+}

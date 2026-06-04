@@ -7,6 +7,7 @@ urlpatterns = [
     path('login/', views.login, name='login'),
     path('logout/', views.logout, name='logout'),
     path('me/', views.me, name='me'),
+    path('sync-github-token/', views.sync_github_token, name='sync-github-token'),
 
     # --- GitHub OAuth Routes ---
     path('github-login/', views.github_login, name='github-login'),
