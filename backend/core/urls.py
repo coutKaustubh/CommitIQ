@@ -17,9 +17,12 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 
+from repos.webhook_views import github_webhook
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/users/', include('users.urls')),
     path('api/repos/', include('repos.urls')),
+    # Public: GitHub → ngrok (dev) or Railway (prod). Auth = HMAC signature, not JWT.
+    path('api/webhooks/github/', github_webhook, name='github-webhook'),
 ]

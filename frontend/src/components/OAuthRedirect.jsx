@@ -9,8 +9,13 @@ function OAuthRedirect() {
   const location = useLocation()
   const navigate = useNavigate()
 
+  //: Login ke baad Supabase kabhi user ko galat page pe bhej deta hai
+  //  (jaise / ya /login) lekin URL mein secret code/token chipka hota hai.
+  //  Yeh block woh pakad ke sahi jagah /auth/callback pe bhej deta hai taaki 
+  // login complete ho sake.
   useEffect(() => {
     if (location.pathname === '/auth/callback') return
+    //Agar pehle se /auth/callback pe ho → kuch mat karo, loop avoid.
 
     const search = location.search || ''
     const hash = location.hash || ''

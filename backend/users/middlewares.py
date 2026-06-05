@@ -11,8 +11,10 @@ supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_KEY)
 EXEMPT_ROUTES = [
     '/api/users/signup/',
     '/api/users/login/',
-    '/api/users/github-login/', 
-    '/api/users/callback/',    
+    '/api/users/github-login/',
+    '/api/users/callback/',
+    # GitHub webhook: no Bearer token — uses X-Hub-Signature-256 (see webhook_views.py).
+    '/api/webhooks/github/',
 ]
 
 class SupabaseAuthMiddleware:
@@ -25,7 +27,11 @@ class SupabaseAuthMiddleware:
         if request.method == 'OPTIONS':
             return self.get_response(request)
 
-        # Exempt routes ko skip karo
+        # JWT check sirf /api/* pe — /admin/ aur ngrok root browser se token maange nahi
+        if not request.path.startswith('/api/'):
+            return self.get_response(request)
+
+        # Exempt API routes (signup, login, webhook, …)
         if request.path in EXEMPT_ROUTES:
             return self.get_response(request)
 
