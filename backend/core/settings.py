@@ -14,10 +14,10 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 import dj_database_url # type: ignore
-load_dotenv()
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+# Always load backend/.env (cwd se independent); override=True taaki restart pe fresh values
+load_dotenv(BASE_DIR / '.env', override=True)
 
 
 # Quick-start development settings - unsuitable for production
@@ -29,6 +29,18 @@ DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
 _allowed_hosts = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1')
 ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts.split(',') if h.strip()]
+
+# Admin login via ngrok (HTTPS POST) needs full origin here — not covered by ALLOWED_HOSTS alone.
+# Example: https://your-subdomain.ngrok-free.dev (update when ngrok URL changes)
+_csrf_origins = os.getenv(
+    'CSRF_TRUSTED_ORIGINS',
+    'http://localhost:8000,http://127.0.0.1:8000',
+)
+CSRF_TRUSTED_ORIGINS = [o.strip() for o in _csrf_origins.split(',') if o.strip()]
+
+# ngrok HTTPS → Django HTTP: proxy header se request secure treat hoti hai (admin CSRF cookies)
+if DEBUG:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # Application definition
 
