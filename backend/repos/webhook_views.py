@@ -1,5 +1,5 @@
 """
-GitHub webhook endpoint — Phase 4.
+GitHub webhook endpoint — 
 
 Why ngrok (dev) or Railway (prod)?
   git push → GitHub POST https://PUBLIC_URL/api/webhooks/github/
@@ -11,7 +11,10 @@ This view RECEIVES JSON — it does not call GitHub API (that is Phase 3 pull fl
 
 import json
 import logging
-
+from urllib.parse import parse_qs
+# urllib.parse = used to parse the URL and extract the query parameters
+# parse_qs = used to parse the query parameters and return a dictionary
+# keep_blank_values = used to keep the blank values in the query parameters
 from django.conf import settings
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -22,6 +25,31 @@ from .views import parse_github_datetime
 from .webhook_utils import verify_github_signature
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_github_webhook_body(raw_body: bytes, content_type: str) -> dict:
+    #raw_body: bytes = the raw body of the request
+    #content_type: str = the content type of the request
+    """
+    GitHub can POST either:
+      - application/json → body is the JSON payload (preferred)
+      - application/x-www-form-urlencoded → JSON is in the `payload` field
+    Signature is always computed on raw_body bytes (before parsing).
+    """
+    if not raw_body:
+        raise ValueError("empty body")#if the raw body is empty, raise an error
+
+    ct = (content_type or "").split(";")[0].strip().lower()
+    text = raw_body.decode("utf-8")#converts the raw body to a string
+
+    if ct == "application/x-www-form-urlencoded":
+        form = parse_qs(text, keep_blank_values=True) 
+        payload_parts = form.get("payload") or [] #payload is the JSON payload in the request
+        if not payload_parts:
+            raise ValueError("missing payload field")#if the payload is missing, raise an error
+        return json.loads(payload_parts[0])#converts the payload to a dictionary
+
+    return json.loads(text)#converts the text to a dictionary
 
 
 def _save_commits_from_webhook_payload(repository, commits_payload):
@@ -106,10 +134,22 @@ def github_webhook(request):
     if event != "push":
         return JsonResponse({"ok": True, "ignored": event}, status=200)
 
+    content_type = request.headers.get("Content-Type", "")
     try:
-        payload = json.loads(raw_body.decode("utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return JsonResponse({"error": "invalid json"}, status=400)
+        payload = _parse_github_webhook_body(raw_body, content_type)
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as exc:
+        logger.warning(
+            "Webhook push JSON parse failed (Content-Type=%r): %s",
+            content_type,
+            exc,
+        )
+        return JsonResponse(
+            {
+                "error": "invalid json",
+                "hint": "Set GitHub webhook Content type to application/json",
+            },
+            status=400,
+        )
 
     repository_data = payload.get("repository") or {}
     full_name = repository_data.get("full_name") or ""

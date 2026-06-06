@@ -7,7 +7,10 @@ Instead GitHub sends X-Hub-Signature-256: HMAC stamp using GITHUB_WEBHOOK_SECRET
 """
 
 import hashlib
+#hashlib = used to create secure hashes of data
 import hmac
+#hmac = Hash-based Message Authentication Code
+#used to verify the integrity(data has not been altered with a secret key) of the data
 
 
 def verify_github_signature(raw_body: bytes, signature_header: str, secret: str) -> bool:
@@ -34,7 +37,10 @@ def verify_github_signature(raw_body: bytes, signature_header: str, secret: str)
         secret.encode("utf-8"),
         raw_body,
         hashlib.sha256,
-    ).hexdigest()
+    ).hexdigest()#converts the hash to a hexadecimal string
+    
+    #SHA = Secure Hash Algorithm
+    #256 = output 256 bits (64 hex characters)
 
     received_hex = signature_header[7:]  # strip "sha256="
 

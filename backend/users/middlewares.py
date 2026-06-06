@@ -13,8 +13,15 @@ EXEMPT_ROUTES = [
     '/api/users/login/',
     '/api/users/github-login/',
     '/api/users/callback/',
-    # GitHub webhook: no Bearer token — uses X-Hub-Signature-256 (see webhook_views.py).
+    
+    
     '/api/webhooks/github/',
+    # GitHub webhook exempt — git push pe GitHub ka SERVER call karta hai, user nahi.
+    # Iske paas Supabase JWT / Authorization: Bearer header nahi hota.
+    # Agar yahan exempt na karein to middleware 401 "No Token provided" dega
+    # aur github_webhook view tak request pahunchegi hi nahi.
+    # Security yahan nahi chhooti — webhook_views.py mein X-Hub-Signature-256
+    # + GITHUB_WEBHOOK_SECRET se HMAC verify hota hai (webhook_utils.py).
 ]
 
 class SupabaseAuthMiddleware:
