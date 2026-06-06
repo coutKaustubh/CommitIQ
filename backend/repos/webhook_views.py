@@ -137,7 +137,7 @@ def github_webhook(request):
     content_type = request.headers.get("Content-Type", "")
     try:
         payload = _parse_github_webhook_body(raw_body, content_type)
-    except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as exc:
+    except (json.JSONDecodeError, ValueError) as exc:
         logger.warning(
             "Webhook push JSON parse failed (Content-Type=%r): %s",
             content_type,
