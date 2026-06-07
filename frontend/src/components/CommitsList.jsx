@@ -1,14 +1,8 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { X, ExternalLink } from 'lucide-react'
 import { api } from '../api/client.js'
-
-function formatDate(iso) {
-  if (!iso) return '—'
-  try {
-    return new Date(iso).toLocaleString()
-  } catch {
-    return iso
-  }
-}
+import { timeAgo } from '../utils/time.js'
 
 function CommitsList({ dbId, fullName, onClose }) {
   const [commits, setCommits] = useState([])
@@ -17,7 +11,6 @@ function CommitsList({ dbId, fullName, onClose }) {
 
   useEffect(() => {
     let cancelled = false
-
     async function load() {
       setLoading(true)
       setError('')
@@ -30,7 +23,6 @@ function CommitsList({ dbId, fullName, onClose }) {
         if (!cancelled) setLoading(false)
       }
     }
-
     if (dbId) load()
     return () => {
       cancelled = true
@@ -38,50 +30,54 @@ function CommitsList({ dbId, fullName, onClose }) {
   }, [dbId])
 
   return (
-    <div className="commits-panel">
-      <div className="commits-panel-header">
-        <h3>Recent commits — {fullName}</h3>
+    <div className="mt-4 border-t border-border pt-4">
+      <div className="mb-3 flex items-center justify-between">
+        <h4 className="font-mono text-xs uppercase tracking-widest text-secondary">
+          Recent commits — {fullName}
+        </h4>
         {onClose && (
-          <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>
-            Close
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-secondary hover:text-content"
+          >
+            <X size={13} /> Close
           </button>
         )}
       </div>
-      {loading && <p className="hint">Loading commits…</p>}
-      {error && <p className="error">{error}</p>}
+
+      {loading && <p className="text-sm text-secondary">Loading commits…</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
       {!loading && !error && commits.length === 0 && (
-        <p className="hint">No commits found for this repository.</p>
+        <p className="text-sm text-secondary">No commits found for this repository.</p>
       )}
+
       {!loading && !error && commits.length > 0 && (
-        <div className="commits-table-wrap">
-          <table className="commits-table">
-            <thead>
-              <tr>
-                <th>SHA</th>
-                <th>Message</th>
-                <th>Author</th>
-                <th>Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {commits.map((c) => (
-                <tr key={c.sha}>
-                  <td>
-                    {c.html_url ? (
-                      <a href={c.html_url} target="_blank" rel="noreferrer" className="commit-sha">
-                        {c.short_sha}
-                      </a>
-                    ) : (
-                      <code className="commit-sha">{c.short_sha}</code>
-                    )}
-                  </td>
-                  <td className="commit-message">{c.message.split('\n')[0]}</td>
-                  <td>{c.author_name || '—'}</td>
-                  <td className="commit-date">{formatDate(c.committed_at)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-1.5">
+          {commits.map((c) => (
+            <div
+              key={c.sha}
+              className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-surface-hover"
+            >
+              <Link
+                to={`/dashboard/commits/${c.sha}`}
+                className="rounded bg-bg px-2 py-0.5 font-mono text-xs text-primary-light"
+              >
+                {c.short_sha}
+              </Link>
+              <span className="min-w-0 flex-1 truncate text-sm text-content">
+                {c.message.split('\n')[0]}
+              </span>
+              <span className="hidden font-mono text-xs text-muted sm:inline">
+                {c.author_name || '—'} · {timeAgo(c.committed_at)}
+              </span>
+              {c.html_url && (
+                <a href={c.html_url} target="_blank" rel="noreferrer" className="text-secondary hover:text-content">
+                  <ExternalLink size={14} />
+                </a>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>

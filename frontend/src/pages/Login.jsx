@@ -4,6 +4,8 @@ import { api } from '../api/client.js'
 import { supabase } from '../lib/supabaseClient.js'
 import { saveSession } from '../utils/auth.js'
 import { clearSupabaseAuthSession } from '../utils/github.js'
+import FoxLogo from '../components/FoxLogo.jsx'
+import GitHubIcon from '../components/GitHubIcon.jsx'
 
 function Login() {
   const navigate = useNavigate()
@@ -24,9 +26,7 @@ function Login() {
       const redirectTo = `${window.location.origin}/auth/callback`
       const { data, error: sbError } = await supabase.auth.signInWithOAuth({
         provider: 'github',
-        options: {
-          redirectTo,
-        },
+        options: { redirectTo },
       })
       if (sbError) throw sbError
       if (data?.url) window.location.href = data.url
@@ -61,59 +61,72 @@ function Login() {
   }
 
   return (
-    <div className="page">
-      <header className="header">
-        <h1>CommitIQ</h1>
-        <p className="tagline">Sign in to your account</p>
-      </header>
+    <div className="bg-grid flex min-h-screen items-center justify-center bg-bg px-4 py-12">
+      <div className="w-full max-w-md">
+        <Link to="/" className="mb-8 flex items-center justify-center gap-2">
+          <FoxLogo size={34} />
+          <span className="font-display text-xl font-bold tracking-tight">CommitIQ</span>
+        </Link>
 
-      <main className="card">
-        <h2>Login</h2>
-        <form className="form" onSubmit={handleSubmit}>
-          <label className="label">
-            Email
-            <input
-              className="input"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoComplete="email"
-            />
-          </label>
-          <label className="label">
-            Password
-            <input
-              className="input"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              autoComplete="current-password"
-            />
-          </label>
-          {error && <p className="error">{error}</p>}
-          <button className="btn btn-primary" type="submit" disabled={loading}>
-            {loading ? 'Signing in…' : 'Sign in'}
+        <div className="rounded-2xl border border-border bg-surface p-8">
+          <h1 className="font-display text-2xl font-bold">Welcome back</h1>
+          <p className="mt-1 text-sm text-secondary">Sign in to read your commits.</p>
+
+          <button
+            type="button"
+            onClick={handleGitHub}
+            disabled={githubLoading || loading}
+            className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 font-semibold text-white transition-all hover:bg-primary/90 disabled:opacity-60"
+          >
+            <GitHubIcon size={18} />
+            {githubLoading ? 'Redirecting…' : 'Continue with GitHub'}
           </button>
-        </form>
 
-        <div className="divider">
-          <span>or</span>
+          <div className="my-6 flex items-center gap-3 text-xs text-muted">
+            <span className="h-px flex-1 bg-border" /> OR <span className="h-px flex-1 bg-border" />
+          </div>
+
+          <form className="space-y-4" onSubmit={handleSubmit}>
+            <label className="block">
+              <span className="mb-1.5 block text-sm text-secondary">Email</span>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoComplete="email"
+                className="w-full rounded-lg border border-border bg-bg px-3.5 py-2.5 text-content outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/30"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-sm text-secondary">Password</span>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoComplete="current-password"
+                className="w-full rounded-lg border border-border bg-bg px-3.5 py-2.5 text-content outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/30"
+              />
+            </label>
+            {error && <p className="text-sm text-danger">{error}</p>}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full rounded-lg border border-border bg-surface-hover px-4 py-2.5 font-semibold text-content transition-colors hover:border-primary/50 disabled:opacity-60"
+            >
+              {loading ? 'Signing in…' : 'Sign in'}
+            </button>
+          </form>
+
+          <p className="mt-6 text-center text-sm text-secondary">
+            No account?{' '}
+            <Link to="/signup" className="text-primary-light hover:underline">
+              Sign up
+            </Link>
+          </p>
         </div>
-        <button
-          type="button"
-          className="btn btn-secondary btn-block"
-          onClick={handleGitHub}
-          disabled={githubLoading || loading}
-        >
-          {githubLoading ? 'Redirecting…' : 'Continue with GitHub'}
-        </button>
-
-        <p className="form-footer">
-          No account? <Link to="/signup">Sign up</Link>
-        </p>
-      </main>
+      </div>
     </div>
   )
 }
