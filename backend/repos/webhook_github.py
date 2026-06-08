@@ -30,7 +30,11 @@ def _normalize_hook_url(url):
     path = (parsed.path or "").rstrip("/") or ""
     scheme = (parsed.scheme or "https").lower()
     port = parsed.port
-    if port and not ((scheme == "http" and port == 80) or (scheme == "https" and port == 443)):
+    if (
+        port
+        and (scheme != "http" or port != 80)
+        and (scheme != "https" or port != 443)
+    ):
         netloc = f"{host}:{port}"
     else:
         netloc = host
