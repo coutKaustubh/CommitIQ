@@ -92,6 +92,27 @@ function Repositories() {
     }
   }
 
+  async function handleRetryWebhook(repo) {
+    setActionId(repo.id)
+    setError('')
+    try {
+      const res = await api('/api/repos/retry-webhook/', {
+        method: 'POST',
+        body: JSON.stringify({ full_name: repo.full_name }),
+      })
+      setRepos((prev) =>
+        prev.map((r) =>
+          r.id === repo.id ? { ...r, webhook_active: res.webhook_active ?? false } : r,
+        ),
+      )
+      if (res.webhook_error) setError(res.webhook_error)
+    } catch (err) {
+      setError(err.message || err.data?.webhook_error || 'Webhook setup failed')
+    } finally {
+      setActionId(null)
+    }
+  }
+
   async function handleDisconnect(repo) {
     setActionId(repo.id)
     setError('')
@@ -237,6 +258,17 @@ function Repositories() {
 
                 {repo.description && (
                   <p className="mt-3 line-clamp-2 text-sm text-secondary">{repo.description}</p>
+                )}
+
+                {repo.connected && !repo.webhook_active && (
+                  <button
+                    type="button"
+                    disabled={actionId === repo.id}
+                    onClick={() => handleRetryWebhook(repo)}
+                    className="mt-3 rounded-lg border border-warning/50 bg-warning/10 px-3 py-1.5 text-sm text-warning hover:bg-warning/20 disabled:opacity-60"
+                  >
+                    {actionId === repo.id ? '…' : 'Setup webhook'}
+                  </button>
                 )}
 
                 {repo.connected && repo.db_id && (

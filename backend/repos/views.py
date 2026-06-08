@@ -105,6 +105,14 @@ def sync_commits_from_github(repository, items):
         )
 
 
+def _save_webhook_on_repo(repo, token, full_name):
+    hook_id, hook_error = ensure_repo_webhook(token, full_name)
+    if hook_id:
+        repo.github_webhook_id = hook_id
+        repo.save(update_fields=["github_webhook_id", "updated_at"])
+    return hook_id, hook_error
+
+
 @api_view(["GET"])
 def list_github_repos(request):
     """
@@ -226,10 +234,7 @@ def connect_repo(request):
         defaults={"github_id": github_id, "is_active": True},
     )
 
-    hook_id, hook_error = ensure_repo_webhook(profile.github_access_token, full_name)
-    if hook_id:
-        repo.github_webhook_id = hook_id
-        repo.save(update_fields=["github_webhook_id", "updated_at"])
+    hook_id, hook_error = _save_webhook_on_repo(repo, profile.github_access_token, full_name)
 
     payload = {
         "message": "Repository connected",
@@ -295,6 +300,47 @@ def disconnect_repo(request):
         {"message": "Repository disconnected", "repository": serialize_repository(repo)},
         status=status.HTTP_200_OK,
     )
+
+
+@api_view(["POST"])
+def retry_repo_webhook(request):
+    """
+    Retry GitHub webhook setup for an already-connected repo.
+    Body: { "full_name": "owner/repo" }
+    """
+    profile, err = require_profile_with_github(request)
+    if err:
+        return err
+
+    full_name = (request.data.get("full_name") or "").strip()
+    if not full_name:
+        return Response(
+            {"error": "full_name is required"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        repo = Repository.objects.get(owner=profile, full_name=full_name, is_active=True)
+    except Repository.DoesNotExist:
+        return Response(
+            {"error": "Connected repository not found"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    hook_id, hook_error = _save_webhook_on_repo(repo, profile.github_access_token, full_name)
+    repo.refresh_from_db()
+
+    payload = {
+        "message": "Webhook active" if hook_id else "Webhook setup failed",
+        "repository": serialize_repository(repo),
+        "webhook_active": hook_id is not None,
+    }
+    if hook_error:
+        payload["webhook_error"] = hook_error
+        logger.warning("Retry webhook %s failed: %s", full_name, hook_error)
+
+    status_code = status.HTTP_200_OK if hook_id else status.HTTP_502_BAD_GATEWAY
+    return Response(payload, status=status_code)
 
 
 @api_view(["GET"])
