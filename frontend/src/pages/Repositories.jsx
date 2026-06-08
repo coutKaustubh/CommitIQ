@@ -74,9 +74,17 @@ function Repositories() {
         body: JSON.stringify({ github_id: repo.id, full_name: repo.full_name }),
       })
       const dbId = res.repository?.id
+      const webhookActive = res.webhook_active ?? false
       setRepos((prev) =>
-        prev.map((r) => (r.id === repo.id ? { ...r, connected: true, db_id: dbId ?? r.db_id } : r)),
+        prev.map((r) =>
+          r.id === repo.id
+            ? { ...r, connected: true, db_id: dbId ?? r.db_id, webhook_active: webhookActive }
+            : r,
+        ),
       )
+      if (res.webhook_error) {
+        setError(res.webhook_error)
+      }
     } catch (err) {
       setError(err.message || 'Could not connect repository')
     } finally {
@@ -94,7 +102,9 @@ function Repositories() {
       })
       if (commitsRepo?.githubId === repo.id) setCommitsRepo(null)
       setRepos((prev) =>
-        prev.map((r) => (r.id === repo.id ? { ...r, connected: false, db_id: null } : r)),
+        prev.map((r) =>
+          r.id === repo.id ? { ...r, connected: false, db_id: null, webhook_active: false } : r,
+        ),
       )
     } catch (err) {
       setError(err.message || 'Could not disconnect repository')
@@ -188,9 +198,13 @@ function Repositories() {
                       <span className="rounded border border-border px-1.5 py-0.5 uppercase">
                         {repo.private ? 'Private' : 'Public'}
                       </span>
-                      {repo.connected ? (
+                      {repo.connected && repo.webhook_active ? (
                         <span className="inline-flex items-center gap-1 text-success">
                           <CheckCircle2 size={13} /> Webhook active
+                        </span>
+                      ) : repo.connected ? (
+                        <span className="inline-flex items-center gap-1 text-warning">
+                          <XCircle size={13} /> Connected — webhook pending
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 text-muted">

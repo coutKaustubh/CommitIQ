@@ -38,6 +38,11 @@ class Repository(models.Model):
     github_id = models.BigIntegerField()
     full_name = models.CharField(max_length=255, help_text="e.g. username/repo-name")
     is_active = models.BooleanField(default=True)
+    github_webhook_id = models.BigIntegerField(
+        null=True,
+        blank=True,
+        help_text="GitHub hook id — set when push webhook is registered on connect.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

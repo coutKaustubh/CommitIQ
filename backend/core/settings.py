@@ -150,6 +150,9 @@ SUPABASE_SERVICE_KEY = os.getenv('SUPABASE_SERVICE_KEY')
 # Shared secret with GitHub webhook settings — NOT a PAT. Used for X-Hub-Signature-256.
 GITHUB_WEBHOOK_SECRET = os.getenv('GITHUB_WEBHOOK_SECRET', '')
 
+# Public backend URL (no trailing slash) — used to register GitHub webhooks on connect.
+PUBLIC_API_URL = os.getenv('PUBLIC_API_URL', 'http://127.0.0.1:8000').rstrip('/')
+
 # DRF
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [

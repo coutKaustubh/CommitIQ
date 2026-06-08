@@ -26,7 +26,10 @@ function Login() {
       const redirectTo = `${window.location.origin}/auth/callback`
       const { data, error: sbError } = await supabase.auth.signInWithOAuth({
         provider: 'github',
-        options: { redirectTo },
+        options: {
+          redirectTo,
+          scopes: 'read:user repo admin:repo_hook',
+        },
       })
       if (sbError) throw sbError
       if (data?.url) window.location.href = data.url

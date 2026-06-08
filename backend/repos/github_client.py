@@ -7,14 +7,16 @@ GITHUB_HEADERS_BASE = {
 }
 
 
-def github_request(method, path, token, *, params=None, timeout=30):
+def github_request(method, path, token, *, params=None, json=None, timeout=30):
     """Call GitHub REST API with the user's OAuth token."""
     url = path if path.startswith("http") else f"{GITHUB_API_BASE}{path}"
     headers = {
         **GITHUB_HEADERS_BASE,
         "Authorization": f"Bearer {token}",
     }
-    return requests.request(method, url, headers=headers, params=params, timeout=timeout)
+    return requests.request(
+        method, url, headers=headers, params=params, json=json, timeout=timeout
+    )
 
 
 def fetch_github_user_login(token):

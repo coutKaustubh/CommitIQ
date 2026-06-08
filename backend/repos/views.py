@@ -8,6 +8,7 @@ from rest_framework.response import Response
 
 from .github_client import github_request
 from .models import Commit, Repository, UserProfile
+from .webhook_github import delete_repo_webhook, ensure_repo_webhook
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,7 @@ def serialize_repository(repo):
         "github_id": repo.github_id,
         "full_name": repo.full_name,
         "is_active": repo.is_active,
+        "webhook_active": bool(repo.is_active and repo.github_webhook_id),
         "created_at": repo.created_at.isoformat(),
     }
 
@@ -142,14 +144,14 @@ def list_github_repos(request):
             status=status.HTTP_502_BAD_GATEWAY,
         )
 
-    connected_by_name = {
-        r.full_name: r.id
-        for r in profile.repositories.filter(is_active=True)
+    connected_repos = {
+        r.full_name: r for r in profile.repositories.filter(is_active=True)
     }
 
     repos = []
     for item in response.json():
         full_name = item.get("full_name") or ""
+        connected = connected_repos.get(full_name)
         repos.append(
             {
                 "id": item.get("id"),
@@ -157,8 +159,11 @@ def list_github_repos(request):
                 "private": bool(item.get("private")),
                 "html_url": item.get("html_url"),
                 "description": item.get("description") or "",
-                "connected": full_name in connected_by_name,
-                "db_id": connected_by_name.get(full_name),
+                "connected": connected is not None,
+                "db_id": connected.id if connected else None,
+                "webhook_active": bool(
+                    connected and connected.is_active and connected.github_webhook_id
+                ),
             }
         )
 
@@ -221,12 +226,23 @@ def connect_repo(request):
         defaults={"github_id": github_id, "is_active": True},
     )
 
+    hook_id, hook_error = ensure_repo_webhook(profile.github_access_token, full_name)
+    if hook_id:
+        repo.github_webhook_id = hook_id
+        repo.save(update_fields=["github_webhook_id", "updated_at"])
+
+    payload = {
+        "message": "Repository connected",
+        "repository": serialize_repository(repo),
+        "created": created,
+        "webhook_active": hook_id is not None,
+    }
+    if hook_error:
+        payload["webhook_error"] = hook_error
+        logger.warning("Connect %s: webhook setup failed: %s", full_name, hook_error)
+
     return Response(
-        {
-            "message": "Repository connected",
-            "repository": serialize_repository(repo),
-            "created": created,
-        },
+        payload,
         status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
     )
 
@@ -262,8 +278,18 @@ def disconnect_repo(request):
             status=status.HTTP_200_OK,
         )
 
+    if repo.github_webhook_id:
+        ok, del_error = delete_repo_webhook(
+            profile.github_access_token,
+            full_name,
+            repo.github_webhook_id,
+        )
+        if not ok:
+            logger.warning("Disconnect %s: webhook delete failed: %s", full_name, del_error)
+
     repo.is_active = False
-    repo.save(update_fields=["is_active", "updated_at"])
+    repo.github_webhook_id = None
+    repo.save(update_fields=["is_active", "github_webhook_id", "updated_at"])
 
     return Response(
         {"message": "Repository disconnected", "repository": serialize_repository(repo)},
