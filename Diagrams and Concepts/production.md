@@ -2,7 +2,7 @@
 
 Is document mein sab kuch hai — Gunicorn/Nginx kya hai, kyun choose kiya, code mein kya change hua, aur deploy kaise karna hai.
 
----
+---  
 
 ## Part 1 — `runserver` vs Production Server
 
