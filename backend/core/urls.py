@@ -15,11 +15,18 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
+from django.http import JsonResponse
 from django.urls import path, include
 
 from repos.webhook_views import github_webhook
 
+
+def health(_request):
+    return JsonResponse({"ok": True})
+
+
 urlpatterns = [
+    path('api/health/', health, name='health'),
     path('admin/', admin.site.urls),
     path('api/users/', include('users.urls')),
     path('api/repos/', include('repos.urls')),

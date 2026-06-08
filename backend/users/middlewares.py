@@ -9,6 +9,7 @@ supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_KEY)
 # Yeh routes token ke bina chalenge
 # Kyunki signup/login pe token hota hi nahi abhi tak
 EXEMPT_ROUTES = [
+    '/api/health/',
     '/api/users/signup/',
     '/api/users/login/',
     '/api/users/github-login/',

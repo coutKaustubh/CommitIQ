@@ -38,9 +38,9 @@ _csrf_origins = os.getenv(
 )
 CSRF_TRUSTED_ORIGINS = [o.strip() for o in _csrf_origins.split(',') if o.strip()]
 
-# ngrok HTTPS → Django HTTP: proxy header se request secure treat hoti hai (admin CSRF cookies)
-if DEBUG:
-    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+# Hosted platforms (Render, Railway) terminate TLS at the proxy — Django needs this
+# for CSRF cookies and admin login over HTTPS.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # Application definition
 
@@ -65,6 +65,7 @@ INSTALLED_APPS += NEW_APPS
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware', #it is used to serve static files in production
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -137,6 +138,8 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 
 # Supabase
@@ -154,9 +157,10 @@ REST_FRAMEWORK = {
     ]
 }
 
-# CORS - React frontend ke liye
-CORS_ALLOWED_ORIGINS = [
-    'http://localhost:5173',  # Vite React
-    'http://localhost:3000',
-]
+# CORS — comma-separated origins in .env for production (Vercel URL, etc.)
+_cors_origins = os.getenv(
+    'CORS_ALLOWED_ORIGINS',
+    'http://localhost:5173,http://localhost:3000',
+)
+CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors_origins.split(',') if o.strip()]
 
