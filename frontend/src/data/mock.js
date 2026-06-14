@@ -1,5 +1,5 @@
-// Mock data for analysis features the backend does not serve yet.
-// Replace these with real API calls when the analysis pipeline lands.
+// Mock data — only PerformanceGraph still uses MOCK_PERF_SERIES until APM ships.
+// Dashboard + CommitDetail now use /api/repos/commits/recent-analysis/ and .../analysis/.
 
 export const MOCK_ANALYSIS_FEED = [
   {

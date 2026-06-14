@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, GitCommit, ArrowRight, Activity } from 'lucide-react'
 import { api } from '../api/client.js'
+import { fetchRecentAnalysis } from '../api/analysis.js'
 import DashboardShell from '../components/DashboardShell.jsx'
 import StatCard from '../components/StatCard.jsx'
 import RiskBadge from '../components/RiskBadge.jsx'
@@ -9,14 +10,14 @@ import SkeletonCard from '../components/SkeletonCard.jsx'
 import PerformanceGraph from '../components/PerformanceGraph.jsx'
 import { getGreeting } from '../utils/greeting.js'
 import { timeAgo } from '../utils/time.js'
-import { MOCK_ANALYSIS_FEED, MOCK_PERF_SERIES } from '../data/mock.js'
-
-const RISK_BY_INDEX = ['CRITICAL', 'OK', 'WARNING', 'OK', 'LOW']
+import { MOCK_PERF_SERIES } from '../data/mock.js'
 
 function Dashboard() {
   const [user, setUser] = useState(null)
   const [connected, setConnected] = useState([])
-  const [recentCommits, setRecentCommits] = useState([])
+  const [recentCommitsByRepo, setRecentCommitsByRepo] = useState({})
+  const [analysisFeed, setAnalysisFeed] = useState([])
+  const [analysisStats, setAnalysisStats] = useState({ analyzed: 0, critical: 0 })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const greeting = getGreeting()
@@ -25,20 +26,39 @@ function Dashboard() {
     let cancelled = false
     async function load() {
       try {
-        const [me, reposData] = await Promise.all([
+        const [me, reposData, analysisData] = await Promise.all([
           api('/api/users/me/'),
           api('/api/repos/connected/').catch(() => ({ connected: [] })),
+          fetchRecentAnalysis().catch(() => ({ feed: [], stats: {} })),
         ])
         if (cancelled) return
         setUser(me)
         const list = reposData.connected || []
         setConnected(list)
+        setAnalysisFeed(analysisData.feed || [])
+        setAnalysisStats(analysisData.stats || { analyzed: 0, critical: 0 })
+
         if (list.length > 0) {
           try {
-            const commitsData = await api(`/api/repos/${list[0].id}/commits/`)
-            if (!cancelled) setRecentCommits((commitsData.commits || []).slice(0, 5))
+            const commitsByRepo = await Promise.all(
+              list.map((repo) =>
+                api(`/api/repos/${repo.id}/commits/`)
+                  .then((data) => ({
+                    repoId: repo.id,
+                    commits: (data.commits || []).slice(0, 1),
+                  }))
+                  .catch(() => ({ repoId: repo.id, commits: [] })),
+              ),
+            )
+            if (!cancelled) {
+              const map = {}
+              for (const entry of commitsByRepo) {
+                map[entry.repoId] = entry.commits[0] || null
+              }
+              setRecentCommitsByRepo(map)
+            }
           } catch {
-            if (!cancelled) setRecentCommits([])
+            if (!cancelled) setRecentCommitsByRepo({})
           }
         }
       } catch (err) {
@@ -61,10 +81,10 @@ function Dashboard() {
   }, [])
 
   const username = user?.email ? user.email.split('@')[0] : 'developer'
+  const warningCount = analysisFeed.filter((i) => i.risk === 'WARNING').length
 
   return (
     <DashboardShell userEmail={user?.email || (loading ? 'Loading…' : '')}>
-      {/* Greeting */}
       <div className="mb-8">
         <p className="font-mono text-xs uppercase tracking-widest text-primary-light">
           Dashboard overview
@@ -81,23 +101,30 @@ function Dashboard() {
         </div>
       )}
 
-      {/* Stat cards */}
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
         {loading ? (
           Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} lines={2} />)
         ) : (
           <>
-            <StatCard label="Commits analyzed" value={recentCommits.length || '—'} trend="up" subtitle="Across connected repos" />
-            <StatCard label="Regressions found" value="1" trend="down" subtitle="Last 30 commits" />
-            <StatCard label="Critical issues" value="1" subtitle="Needs attention" />
+            <StatCard
+              label="Commits analyzed"
+              value={analysisStats.analyzed || analysisFeed.length || '—'}
+              trend="up"
+              subtitle="Background Celery jobs"
+            />
+            <StatCard
+              label="Regressions found"
+              value={analysisStats.critical || '0'}
+              trend="down"
+              subtitle="CRITICAL risk level"
+            />
+            <StatCard label="Warnings" value={warningCount} subtitle="Needs review" />
             <StatCard label="Repos connected" value={connected.length} accent subtitle="Live webhooks" />
           </>
         )}
       </div>
 
-      {/* Repositories + Performance */}
       <div className="mt-8 grid gap-6 lg:grid-cols-3">
-        {/* Repositories */}
         <section className="lg:col-span-2">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="font-display text-xl font-bold">Your Repositories</h2>
@@ -129,8 +156,12 @@ function Dashboard() {
             </div>
           ) : (
             <div className="space-y-3">
-              {connected.map((repo, i) => {
-                const lastCommit = i === 0 ? recentCommits[0] : null
+              {connected.map((repo) => {
+                const feedItem = analysisFeed.find(
+                  (f) => f.repo_id === repo.id || f.full_name === repo.full_name,
+                )
+                const lastCommit = recentCommitsByRepo[repo.id]
+                const linkSha = feedItem?.full_sha || lastCommit?.sha || ''
                 return (
                   <div
                     key={repo.id}
@@ -141,25 +172,28 @@ function Dashboard() {
                         <div className="flex items-center gap-2">
                           <GitCommit size={16} className="text-primary-light" />
                           <span className="truncate font-semibold text-content">{repo.full_name}</span>
-                          <span className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] uppercase text-secondary">
-                            Python
-                          </span>
                         </div>
                         <p className="mt-1.5 truncate text-sm text-secondary">
-                          {lastCommit ? lastCommit.message.split('\n')[0] : 'No commits analyzed yet'}
+                          {feedItem?.message ||
+                            lastCommit?.message?.split('\n')[0] ||
+                            'Push to this repo to trigger analysis'}
                         </p>
                         <p className="mt-1 font-mono text-xs text-muted">
-                          Last analyzed {timeAgo(repo.created_at) || 'recently'}
+                          {feedItem?.at
+                            ? `Last analyzed ${timeAgo(feedItem.at)}`
+                            : `Connected ${timeAgo(repo.created_at) || 'recently'}`}
                         </p>
                       </div>
                       <div className="flex flex-col items-end gap-2">
-                        <RiskBadge level={RISK_BY_INDEX[i % RISK_BY_INDEX.length]} />
-                        <Link
-                          to={`/dashboard/commits/${lastCommit?.sha || 'demo'}`}
-                          className="inline-flex items-center gap-1 text-sm text-primary-light hover:underline"
-                        >
-                          View Analysis <ArrowRight size={14} />
-                        </Link>
+                        <RiskBadge level={feedItem?.risk || 'OK'} />
+                        {linkSha ? (
+                          <Link
+                            to={`/dashboard/commits/${linkSha}`}
+                            className="inline-flex items-center gap-1 text-sm text-primary-light hover:underline"
+                          >
+                            View Analysis <ArrowRight size={14} />
+                          </Link>
+                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -169,7 +203,6 @@ function Dashboard() {
           )}
         </section>
 
-        {/* Performance graph */}
         <section>
           <h2 className="mb-4 font-display text-xl font-bold">Performance</h2>
           <div className="rounded-xl border border-border bg-surface p-5">
@@ -177,44 +210,52 @@ function Dashboard() {
               <span className="flex items-center gap-1.5 font-mono text-xs uppercase tracking-widest text-secondary">
                 <Activity size={13} /> Latency / 30 commits
               </span>
-              <span className="font-mono text-xs text-danger">spike</span>
+              <span className="rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 font-mono text-xs text-warning">
+                Coming soon
+              </span>
             </div>
-            <div className="mt-3">
+            <div className="mt-3 opacity-60">
               <PerformanceGraph data={MOCK_PERF_SERIES} height={200} />
             </div>
           </div>
         </section>
       </div>
 
-      {/* Recent analysis feed */}
       <section className="mt-8">
         <h2 className="mb-4 font-display text-xl font-bold">Recent Analysis</h2>
         <div className="overflow-hidden rounded-xl border border-border bg-surface">
-          {MOCK_ANALYSIS_FEED.map((item, i) => (
-            <Link
-              key={item.id}
-              to={`/dashboard/commits/${item.sha}`}
-              className={`flex flex-wrap items-center gap-4 p-4 transition-colors hover:bg-surface-hover ${
-                i > 0 ? 'border-t border-border' : ''
-              }`}
-            >
-              <code className="rounded bg-bg px-2 py-1 font-mono text-xs text-primary-light">
-                {item.sha}
-              </code>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm text-content">{item.message}</p>
-                <p className="font-mono text-xs text-muted">
-                  {item.topIssue} · {item.author} · {timeAgo(item.at)}
-                </p>
-              </div>
-              <RiskBadge level={item.risk} />
-              <ArrowRight size={16} className="text-secondary" />
-            </Link>
-          ))}
+          {loading ? (
+            <div className="p-6 text-sm text-secondary">Loading analysis feed…</div>
+          ) : analysisFeed.length === 0 ? (
+            <div className="p-6 text-sm text-secondary">
+              No analysis yet. Connect a repo and push a commit — the webhook will queue a Celery
+              job automatically.
+            </div>
+          ) : (
+            analysisFeed.map((item, i) => (
+              <Link
+                key={item.id}
+                to={`/dashboard/commits/${item.full_sha || item.sha}`}
+                className={`flex flex-wrap items-center gap-4 p-4 transition-colors hover:bg-surface-hover ${
+                  i > 0 ? 'border-t border-border' : ''
+                }`}
+              >
+                <code className="rounded bg-bg px-2 py-1 font-mono text-xs text-primary-light">
+                  {item.sha}
+                </code>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm text-content">{item.message}</p>
+                  <p className="font-mono text-xs text-muted">
+                    {item.topIssue} · {item.author} · {timeAgo(item.at)}
+                    {item.status && item.status !== 'done' ? ` · ${item.status}` : ''}
+                  </p>
+                </div>
+                <RiskBadge level={item.risk} />
+                <ArrowRight size={16} className="text-secondary" />
+              </Link>
+            ))
+          )}
         </div>
-        <p className="mt-3 font-mono text-xs text-muted">
-          Analysis feed uses sample data — live results arrive when the analysis pipeline ships.
-        </p>
       </section>
     </DashboardShell>
   )
