@@ -27,6 +27,36 @@ SENSITIVE_FILE_MARKERS = (
 # Total line churn above this triggers a WARNING (large blast-radius change).
 LARGE_CHANGE_LINE_THRESHOLD = 500
 
+# N+1 rule runs only on Python source — not docs/config/markdown code samples.
+PYTHON_SOURCE_EXTENSIONS = (".py",)
+
+
+def _is_python_source(file_path):
+    """True if this file path looks like runnable Python (not .md docs, .json, etc.)."""
+    lower = (file_path or "").lower()
+    return lower.endswith(PYTHON_SOURCE_EXTENSIONS)
+
+
+def _patch_has_orm_n_plus_one(patch):
+    """
+    Detect Django ORM N+1 in added diff lines: a for-loop plus objects.get(.
+
+    We intentionally ignore:
+      - Markdown/docs (.md filtered earlier) where examples contain for + dict.get
+      - dict.get("key") — common in parsing code, not an ORM N+1
+    """
+    has_for_loop = False
+    has_orm_get = False
+    for line in (patch or "").splitlines():
+        if not line.startswith("+") or line.startswith("+++"):
+            continue
+        content = line[1:]
+        if "for " in content:
+            has_for_loop = True
+        if "objects.get(" in content:
+            has_orm_get = True
+    return has_for_loop and has_orm_get
+
 
 def fetch_commit_diff(token, full_name, sha):
     """
@@ -131,7 +161,7 @@ def analyze_file_changes(file_changes):
     Rule-based static analysis on saved FileChange rows (Week 3 MVP — no AI/AST).
 
     Rules (from celery.md):
-      1. N+1 pattern: Python patch has both 'for ' and '.get(' → CRITICAL
+      1. N+1 pattern: .py file with for-loop + Model.objects.get( in added lines → CRITICAL
       2. Large change: additions + deletions > 500 → WARNING
       3. Sensitive file path → WARNING
 
@@ -145,9 +175,9 @@ def analyze_file_changes(file_changes):
         patch = fc.patch or ""
         total_lines = (fc.additions or 0) + (fc.deletions or 0)
 
-        # --- Rule 1: possible Django ORM N+1 inside a loop ---
-        if "for " in patch and ".get(" in patch:
-            line_no = _guess_line_number(patch, ".get(")
+        # --- Rule 1: possible Django ORM N+1 inside a loop (Python only) ---
+        if _is_python_source(fc.file_path) and _patch_has_orm_n_plus_one(patch):
+            line_no = _guess_line_number(patch, "objects.get(")
             issues.append(
                 {
                     "severity": "CRITICAL",
@@ -155,7 +185,7 @@ def analyze_file_changes(file_changes):
                     "file_path": fc.file_path,
                     "line_number": line_no,
                     "description": _extract_problem_snippet(patch)
-                    or "Loop body appears to call .get() per iteration — batch queries instead.",
+                    or "Loop body appears to call objects.get() per iteration — batch queries instead.",
                     "suggestion": (
                         "Collect IDs in the loop, then fetch all rows with "
                         "Model.objects.filter(id__in=ids) outside the loop."
