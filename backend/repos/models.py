@@ -85,3 +85,118 @@ class Commit(models.Model):
 
     def __str__(self):
         return f"{self.repository.full_name}@{self.sha[:7]}"
+
+
+class AnalysisJob(models.Model):
+    """
+    Tracks background analysis for a single commit.
+
+    One commit → one job (OneToOne). The Celery worker moves status through:
+    pending → running → done (or failed). Frontend polls this row for UI state.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        RUNNING = "running", "Running"
+        DONE = "done", "Done"
+        FAILED = "failed", "Failed"
+
+    commit = models.OneToOneField(
+        Commit,
+        on_delete=models.CASCADE,
+        related_name="analysis_job",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
+    risk_level = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+        help_text="OK, WARNING, or CRITICAL — set by the Celery worker after static analysis.",
+    )
+    error_message = models.TextField(
+        blank=True,
+        default="",
+        help_text="If status=failed, human-readable reason (e.g. missing GitHub token).",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"AnalysisJob({self.commit.sha[:7]} — {self.status})"
+
+
+class FileChange(models.Model):
+    """
+    One row per file changed in a commit (from GitHub diff API).
+
+    The worker saves these before running static analysis rules on each patch.
+    """
+
+    commit = models.ForeignKey(
+        Commit,
+        on_delete=models.CASCADE,
+        related_name="file_changes",
+    )
+    file_path = models.CharField(max_length=512)
+    status = models.CharField(
+        max_length=20,
+        help_text="GitHub status: added, modified, removed, renamed, etc.",
+    )
+    additions = models.PositiveIntegerField(default=0)
+    deletions = models.PositiveIntegerField(default=0)
+    patch = models.TextField(
+        blank=True,
+        default="",
+        help_text="Unified diff text for this file — used by rule-based static analysis.",
+    )
+
+    class Meta:
+        ordering = ["file_path"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["commit", "file_path"],
+                name="unique_file_change_per_commit",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.file_path} ({self.status})"
+
+
+class AnalysisIssue(models.Model):
+    """
+    A single problem found by static analysis (N+1 query, large diff, sensitive file, etc.).
+
+    Linked to AnalysisJob (not Commit directly) so retry clears/rebuilds issues cleanly.
+    """
+
+    class Severity(models.TextChoices):
+        OK = "OK", "OK"
+        WARNING = "WARNING", "Warning"
+        CRITICAL = "CRITICAL", "Critical"
+
+    job = models.ForeignKey(
+        AnalysisJob,
+        on_delete=models.CASCADE,
+        related_name="issues",
+    )
+    severity = models.CharField(max_length=20, choices=Severity.choices)
+    title = models.CharField(max_length=255)
+    file_path = models.CharField(max_length=512)
+    line_number = models.PositiveIntegerField(null=True, blank=True)
+    description = models.TextField(blank=True, default="")
+    suggestion = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = ["-severity", "file_path"]
+
+    def __str__(self):
+        return f"{self.severity}: {self.title}"

@@ -167,3 +167,18 @@ _cors_origins = os.getenv(
 )
 CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors_origins.split(',') if o.strip()]
 
+# ---------------------------------------------------------------------------
+# Celery + Redis (background commit analysis — see Diagrams and Concepts/celery.md)
+# ---------------------------------------------------------------------------
+# CELERY_BROKER_URL: Redis address where Django drops task messages (the "queue").
+# CELERY_RESULT_BACKEND: where Celery stores task return values (optional for us; we use PostgreSQL).
+# In Docker Compose, host is "redis" not "localhost" — see docker-compose.yml environment overrides.
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://127.0.0.1:6379/0")
+CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://127.0.0.1:6379/0")
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = "UTC"
+# Auto-retry only our main analysis task on worker crash (task code has its own GitHub retry logic).
+CELERY_TASK_ACKS_LATE = True
+

@@ -61,8 +61,11 @@ def _save_commits_from_webhook_payload(repository, commits_payload):
       REST:    items[].sha, nested .commit.author.date
 
     update_or_create = idempotent — duplicate delivery won't crash.
+
+    Returns:
+        List of Commit model instances that were saved/updated (for Celery enqueue).
     """
-    saved = 0
+    saved_commits = []
     for item in commits_payload:
         sha = item.get("id")
         if not sha:
@@ -75,7 +78,7 @@ def _save_commits_from_webhook_payload(repository, commits_payload):
         committed_at = parse_github_datetime(item.get("timestamp"))
         html_url = item.get("url") or ""
 
-        Commit.objects.update_or_create(
+        commit, _created = Commit.objects.update_or_create(
             repository=repository,
             sha=sha,
             defaults={
@@ -85,8 +88,9 @@ def _save_commits_from_webhook_payload(repository, commits_payload):
                 "html_url": html_url,
             },
         )
-        saved += 1
-    return saved
+        saved_commits.append(commit)
+
+    return saved_commits
 
 
 @csrf_exempt
@@ -109,7 +113,8 @@ def github_webhook(request):
 
     Step E — Only Repository rows with is_active=True (user clicked Connect in app).
 
-    Step F — Return 200 quickly; Celery analysis comes in Week 3.
+    Step F — Enqueue Celery analysis (process_commit.delay) and return 200 quickly.
+             Heavy diff + static analysis runs in the celery_worker process, not here.
     """
     raw_body = request.body
     signature = request.headers.get("X-Hub-Signature-256", "")
@@ -164,11 +169,29 @@ def github_webhook(request):
         return JsonResponse({"ok": True, "skipped": "not_connected"}, status=200)
 
     commits_payload = payload.get("commits") or []
-    saved_count = _save_commits_from_webhook_payload(repo, commits_payload)
+    saved_commits = _save_commits_from_webhook_payload(repo, commits_payload)
 
-    logger.info("Webhook saved %s commits for %s", saved_count, full_name)
+    # Queue background analysis for each saved commit (Redis → Celery worker).
+    from .tasks import enqueue_commit_analysis
+
+    queued = 0
+    for commit in saved_commits:
+        enqueue_commit_analysis(commit)
+        queued += 1
+
+    logger.info(
+        "Webhook saved %s commits, queued %s analysis jobs for %s",
+        len(saved_commits),
+        queued,
+        full_name,
+    )
 
     return JsonResponse(
-        {"ok": True, "saved": saved_count, "repository": full_name},
+        {
+            "ok": True,
+            "saved": len(saved_commits),
+            "queued": queued,
+            "repository": full_name,
+        },
         status=200,
     )

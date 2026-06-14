@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Commit, Repository, UserProfile
+from .models import AnalysisIssue, AnalysisJob, Commit, FileChange, Repository, UserProfile
 
 
 @admin.register(UserProfile)
@@ -27,3 +27,33 @@ class CommitAdmin(admin.ModelAdmin):
     @admin.display(description="SHA")
     def short_sha_display(self, obj):
         return obj.sha[:7]
+
+
+@admin.register(AnalysisJob)
+class AnalysisJobAdmin(admin.ModelAdmin):
+    list_display = ("id", "commit_short_sha", "status", "risk_level", "created_at", "finished_at")
+    list_filter = ("status", "risk_level")
+    search_fields = ("commit__sha", "commit__repository__full_name")
+    readonly_fields = ("created_at", "started_at", "finished_at")
+
+    @admin.display(description="Commit")
+    def commit_short_sha(self, obj):
+        return obj.commit.sha[:7]
+
+
+@admin.register(FileChange)
+class FileChangeAdmin(admin.ModelAdmin):
+    list_display = ("file_path", "commit_short_sha", "status", "additions", "deletions")
+    list_filter = ("status",)
+    search_fields = ("file_path", "commit__sha")
+
+    @admin.display(description="Commit")
+    def commit_short_sha(self, obj):
+        return obj.commit.sha[:7]
+
+
+@admin.register(AnalysisIssue)
+class AnalysisIssueAdmin(admin.ModelAdmin):
+    list_display = ("title", "severity", "file_path", "job_id", "line_number")
+    list_filter = ("severity",)
+    search_fields = ("title", "file_path", "job__commit__sha")

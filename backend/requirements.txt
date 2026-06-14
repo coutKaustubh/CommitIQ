@@ -8,3 +8,5 @@ dj-database-url
 requests
 gunicorn
 whitenoise
+celery
+redis
