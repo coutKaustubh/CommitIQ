@@ -63,6 +63,29 @@ class NPlusOneRuleTests(SimpleTestCase):
         found, _ = _patch_has_n_plus_one(patch, "utils/parser.py")
         self.assertFalse(found)
 
+    def test_ignores_string_literals_and_comprehensions(self):
+        """Real false positive: whole file has 'for x in' comps + 'objects.get' in a string."""
+        patch = (
+            "+    if any(lower.endswith(ext) for ext in SKIP_EXTENSIONS):\n"
+            "+        pass\n"
+            '+    hint = "calls objects.get() in a loop"\n'
+            "+def _fc(file_path, patch, additions=2, deletions=0):\n"
+            "+    return type(\n"
+            '+        "+for item in cart_items:\\n"\n'
+            '+        "+    product = Product.objects.get(id=item.id)\\n"\n'
+        )
+        found, _ = _patch_has_n_plus_one(patch, "backend/repos/analysis_services.py")
+        self.assertFalse(found)
+
+    def test_detects_real_n_plus_one_in_loop_body(self):
+        patch = (
+            "+for item in cart_items:\n"
+            "+    product = Product.objects.get(id=item.id)\n"
+        )
+        issues = analyze_file_changes([_fc("checkout/views.py", patch)])
+        self.assertEqual(len(issues), 1)
+        self.assertEqual(issues[0]["title"], "Possible N+1 Query")
+
     def test_large_change_still_skips_markdown(self):
         fc = _fc("README.md", "+line\n" * 600, additions=600, deletions=0)
         self.assertEqual(analyze_file_changes([fc]), [])

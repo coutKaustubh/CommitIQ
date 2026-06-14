@@ -9,6 +9,7 @@ Flow: fetch GitHub diff → save FileChange rows → run rules → return issue 
 """
 
 import logging
+import re
 
 from .github_client import github_request
 from .models import FileChange
@@ -70,6 +71,21 @@ SKIP_ANALYSIS_PATH_SEGMENTS = (
     "/__pycache__/",
 )
 
+# Strip quoted strings before pattern matching — avoids docstrings/tests false positives.
+_STRING_LITERAL_RE = re.compile(r'("(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\')')
+
+# Django ORM N+1: Model.objects.get( inside a loop body (actual code, not a string mention).
+_PYTHON_ORM_GET_RE = re.compile(r"\.objects\.get\s*\(")
+
+# Node ORM calls that often cause N+1 when awaited/called per iteration in a loop.
+_JS_ORM_CALL_RES = (
+    re.compile(r"\.findOne\s*\("),
+    re.compile(r"\.findById\s*\("),
+    re.compile(r"\.findByPk\s*\("),
+    re.compile(r"\.findUnique\s*\("),
+    re.compile(r"\.findFirst\s*\("),
+)
+
 
 def _should_analyze_file(file_path):
     """
@@ -103,55 +119,106 @@ def _added_patch_lines(patch):
     ]
 
 
-def _patch_has_loop(added_lines):
-    """True if added lines contain a loop construct (Python, JS, or similar)."""
-    loop_markers = (
-        "for ",
-        "for(",
-        ".forEach(",
-        ".map(",
-        "for await ",
-        "while ",
+def _code_without_strings(line):
+    """Remove '...' and \"...\" chunks so we match code patterns only, not doc/test strings."""
+    return _STRING_LITERAL_RE.sub("", line)
+
+
+def _line_indent(line):
+    return len(line) - len(line.lstrip(" "))
+
+
+def _is_loop_statement_line(line):
+    """
+    True for statement-level loops (for/while/forEach), not list-comp 'x for x in y' mid-line.
+    """
+    stripped = line.lstrip()
+    if stripped.startswith("#"):
+        return False
+    code = _code_without_strings(stripped).strip()
+    if not code:
+        return False
+    return (
+        code.startswith("for ")
+        or code.startswith("for(")
+        or code.startswith("while ")
+        or code.startswith("for await ")
+        or ".forEach(" in code
     )
-    joined = "\n".join(added_lines)
-    return any(marker in joined for marker in loop_markers)
+
+
+def _line_has_python_orm_get(line):
+    code = _code_without_strings(line)
+    return bool(_PYTHON_ORM_GET_RE.search(code))
+
+
+def _line_has_js_orm_get(line):
+    code = _code_without_strings(line)
+    return any(pattern.search(code) for pattern in _JS_ORM_CALL_RES)
+
+
+def _block_has_n_plus_one(added_lines, body_checker):
+    """
+    Walk added diff lines: find a loop statement, then check indented body lines
+    for ORM calls. Only flags when DB access appears INSIDE the loop block.
+    """
+    i = 0
+    while i < len(added_lines):
+        line = added_lines[i]
+        if not _is_loop_statement_line(line):
+            i += 1
+            continue
+
+        loop_indent = _line_indent(line)
+        j = i + 1
+        while j < len(added_lines):
+            body_line = added_lines[j]
+            body_stripped = body_line.lstrip()
+            if not body_stripped or body_stripped.startswith("#"):
+                j += 1
+                continue
+
+            body_indent = _line_indent(body_line)
+            if body_indent <= loop_indent:
+                break
+
+            if body_checker(body_line):
+                code = _code_without_strings(body_line)
+                if _PYTHON_ORM_GET_RE.search(code):
+                    return True, "objects.get("
+                for pattern in _JS_ORM_CALL_RES:
+                    match = pattern.search(code)
+                    if match:
+                        return True, match.group(0).split("(")[0] + "("
+
+            j += 1
+
+        i += 1
+
+    return False, None
 
 
 def _patch_has_n_plus_one(patch, file_path):
     """
-    Detect likely N+1 DB access inside a loop — multi-language (not Python-only).
+    Detect likely N+1 DB access inside a loop body — multi-language.
 
-    Python (Django):  for ... + Model.objects.get(
-    Node (Sequelize): for/forEach + .findOne( / .findByPk(
-    Node (Mongoose):  for/forEach + .findById( / .findOne(
-    Node (Prisma):    for/forEach + .findUnique(
+    Requires a loop statement AND an ORM call on a deeper-indented line below it.
+    Ignores mentions inside strings (docs, test fixtures, error messages).
     """
     if not _should_analyze_file(file_path):
         return False, None
 
     added_lines = _added_patch_lines(patch)
-    if not added_lines or not _patch_has_loop(added_lines):
+    if not added_lines:
         return False, None
 
-    joined = "\n".join(added_lines)
     lower_path = file_path.lower()
 
-    # Python / Django ORM
-    if lower_path.endswith(".py") and "objects.get(" in joined:
-        return True, "objects.get("
+    if lower_path.endswith(".py"):
+        return _block_has_n_plus_one(added_lines, _line_has_python_orm_get)
 
-    # JavaScript / TypeScript — Express + common ORMs
     if lower_path.endswith((".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs")):
-        js_orm_markers = (
-            ".findOne(",
-            ".findById(",
-            ".findByPk(",
-            ".findUnique(",
-            ".findFirst(",
-        )
-        for marker in js_orm_markers:
-            if marker in joined:
-                return True, marker
+        return _block_has_n_plus_one(added_lines, _line_has_js_orm_get)
 
     return False, None
 
