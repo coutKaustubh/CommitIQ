@@ -27,35 +27,133 @@ SENSITIVE_FILE_MARKERS = (
 # Total line churn above this triggers a WARNING (large blast-radius change).
 LARGE_CHANGE_LINE_THRESHOLD = 500
 
-# N+1 rule runs only on Python source — not docs/config/markdown code samples.
-PYTHON_SOURCE_EXTENSIONS = (".py",)
+# Skip ALL rules for docs, assets, lockfiles, and generated output — any tech stack.
+SKIP_ANALYSIS_EXTENSIONS = (
+    ".md",
+    ".txt",
+    ".rst",
+    ".adoc",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".svg",
+    ".ico",
+    ".webp",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".eot",
+    ".pdf",
+    ".zip",
+    ".map",
+    ".lock",
+)
+
+SKIP_ANALYSIS_FILENAMES = (
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+    "poetry.lock",
+    "pipfile.lock",
+    "composer.lock",
+    "gemfile.lock",
+)
+
+# Path segments that are never worth analyzing (build output, vendored deps).
+SKIP_ANALYSIS_PATH_SEGMENTS = (
+    "/node_modules/",
+    "/dist/",
+    "/build/",
+    "/.git/",
+    "/staticfiles/",
+    "/__pycache__/",
+)
 
 
-def _is_python_source(file_path):
-    """True if this file path looks like runnable Python (not .md docs, .json, etc.)."""
-    lower = (file_path or "").lower()
-    return lower.endswith(PYTHON_SOURCE_EXTENSIONS)
-
-
-def _patch_has_orm_n_plus_one(patch):
+def _should_analyze_file(file_path):
     """
-    Detect Django ORM N+1 in added diff lines: a for-loop plus objects.get(.
+    Return False for docs, assets, lockfiles, and vendored paths.
 
-    We intentionally ignore:
-      - Markdown/docs (.md filtered earlier) where examples contain for + dict.get
-      - dict.get("key") — common in parsing code, not an ORM N+1
+    Works for Python, Node/Express, Go, etc. — we analyze source code files only,
+    not markdown READMEs or PNG icons regardless of repo language.
     """
-    has_for_loop = False
-    has_orm_get = False
-    for line in (patch or "").splitlines():
-        if not line.startswith("+") or line.startswith("+++"):
-            continue
-        content = line[1:]
-        if "for " in content:
-            has_for_loop = True
-        if "objects.get(" in content:
-            has_orm_get = True
-    return has_for_loop and has_orm_get
+    if not file_path:
+        return False
+
+    lower = file_path.lower().replace("\\", "/")
+    basename = lower.rsplit("/", 1)[-1]
+
+    if basename in SKIP_ANALYSIS_FILENAMES:
+        return False
+    if any(lower.endswith(ext) for ext in SKIP_ANALYSIS_EXTENSIONS):
+        return False
+    if any(segment in lower for segment in SKIP_ANALYSIS_PATH_SEGMENTS):
+        return False
+
+    return True
+
+
+def _added_patch_lines(patch):
+    """Extract newly added lines from a unified diff patch (lines starting with +)."""
+    return [
+        line[1:]
+        for line in (patch or "").splitlines()
+        if line.startswith("+") and not line.startswith("+++")
+    ]
+
+
+def _patch_has_loop(added_lines):
+    """True if added lines contain a loop construct (Python, JS, or similar)."""
+    loop_markers = (
+        "for ",
+        "for(",
+        ".forEach(",
+        ".map(",
+        "for await ",
+        "while ",
+    )
+    joined = "\n".join(added_lines)
+    return any(marker in joined for marker in loop_markers)
+
+
+def _patch_has_n_plus_one(patch, file_path):
+    """
+    Detect likely N+1 DB access inside a loop — multi-language (not Python-only).
+
+    Python (Django):  for ... + Model.objects.get(
+    Node (Sequelize): for/forEach + .findOne( / .findByPk(
+    Node (Mongoose):  for/forEach + .findById( / .findOne(
+    Node (Prisma):    for/forEach + .findUnique(
+    """
+    if not _should_analyze_file(file_path):
+        return False, None
+
+    added_lines = _added_patch_lines(patch)
+    if not added_lines or not _patch_has_loop(added_lines):
+        return False, None
+
+    joined = "\n".join(added_lines)
+    lower_path = file_path.lower()
+
+    # Python / Django ORM
+    if lower_path.endswith(".py") and "objects.get(" in joined:
+        return True, "objects.get("
+
+    # JavaScript / TypeScript — Express + common ORMs
+    if lower_path.endswith((".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs")):
+        js_orm_markers = (
+            ".findOne(",
+            ".findById(",
+            ".findByPk(",
+            ".findUnique(",
+            ".findFirst(",
+        )
+        for marker in js_orm_markers:
+            if marker in joined:
+                return True, marker
+
+    return False, None
 
 
 def fetch_commit_diff(token, full_name, sha):
@@ -160,8 +258,11 @@ def analyze_file_changes(file_changes):
     """
     Rule-based static analysis on saved FileChange rows (Week 3 MVP — no AI/AST).
 
-    Rules (from celery.md):
-      1. N+1 pattern: .py file with for-loop + Model.objects.get( in added lines → CRITICAL
+    Rules:
+      0. Skip docs/assets/lockfiles ( .md, images, node_modules, etc. )
+      1. N+1 pattern: loop + ORM call in added lines → CRITICAL
+         - Python: objects.get(
+         - Node/Express: .findOne(, .findById(, .findByPk(, .findUnique(
       2. Large change: additions + deletions > 500 → WARNING
       3. Sensitive file path → WARNING
 
@@ -172,24 +273,37 @@ def analyze_file_changes(file_changes):
     issues = []
 
     for fc in file_changes:
+        if not _should_analyze_file(fc.file_path):
+            continue
+
         patch = fc.patch or ""
         total_lines = (fc.additions or 0) + (fc.deletions or 0)
 
-        # --- Rule 1: possible Django ORM N+1 inside a loop (Python only) ---
-        if _is_python_source(fc.file_path) and _patch_has_orm_n_plus_one(patch):
-            line_no = _guess_line_number(patch, "objects.get(")
+        # --- Rule 1: possible ORM N+1 inside a loop (Python + Node/Express) ---
+        has_n_plus_one, needle = _patch_has_n_plus_one(patch, fc.file_path)
+        if has_n_plus_one:
+            line_no = _guess_line_number(patch, needle)
+            lower_path = fc.file_path.lower()
+            if lower_path.endswith(".py"):
+                suggestion = (
+                    "Collect IDs in the loop, then fetch all rows with "
+                    "Model.objects.filter(id__in=ids) outside the loop."
+                )
+                problem_hint = "Loop body appears to call objects.get() per iteration."
+            else:
+                suggestion = (
+                    "Batch the lookup outside the loop — e.g. fetch all IDs with "
+                    "findAll({ where: { id: ids } }) or $in query, then map in memory."
+                )
+                problem_hint = "Loop body appears to run a per-row database query."
             issues.append(
                 {
                     "severity": "CRITICAL",
                     "title": "Possible N+1 Query",
                     "file_path": fc.file_path,
                     "line_number": line_no,
-                    "description": _extract_problem_snippet(patch)
-                    or "Loop body appears to call objects.get() per iteration — batch queries instead.",
-                    "suggestion": (
-                        "Collect IDs in the loop, then fetch all rows with "
-                        "Model.objects.filter(id__in=ids) outside the loop."
-                    ),
+                    "description": _extract_problem_snippet(patch) or problem_hint,
+                    "suggestion": suggestion,
                 }
             )
 
