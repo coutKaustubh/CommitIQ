@@ -197,7 +197,7 @@ def recent_analysis_feed(request):
             commit__repository__owner=profile,
             commit__repository__is_active=True,
         )
-        .select_related("commit")
+        .select_related("commit", "commit__repository")
         .prefetch_related("issues")
         .order_by("-commit__committed_at")
     )
@@ -218,6 +218,8 @@ def recent_analysis_feed(request):
             {
                 "id": job.id,
                 "job_id": job.id,
+                "repo_id": commit.repository_id,
+                "full_name": commit.repository.full_name,
                 "sha": commit.sha[:7],
                 "full_sha": commit.sha,
                 "message": commit.message.split("\n")[0],
