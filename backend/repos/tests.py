@@ -1,6 +1,7 @@
 from django.test import SimpleTestCase
 
 from .analysis_services import (
+    _is_sensitive_file,
     _patch_has_n_plus_one,
     _should_analyze_file,
     analyze_file_changes,
@@ -89,3 +90,33 @@ class NPlusOneRuleTests(SimpleTestCase):
     def test_large_change_still_skips_markdown(self):
         fc = _fc("README.md", "+line\n" * 600, additions=600, deletions=0)
         self.assertEqual(analyze_file_changes([fc]), [])
+
+
+class SensitiveFileRuleTests(SimpleTestCase):
+    def test_detects_env_and_secrets_across_stacks(self):
+        self.assertTrue(_is_sensitive_file(".env"))
+        self.assertTrue(_is_sensitive_file("backend/.env.production"))
+        self.assertTrue(_is_sensitive_file("config/secrets.json"))
+        self.assertTrue(_is_sensitive_file("deploy/terraform.tfvars"))
+
+    def test_detects_framework_config_not_only_django(self):
+        self.assertTrue(_is_sensitive_file("src/main/resources/application-prod.yml"))
+        self.assertTrue(_is_sensitive_file("appsettings.production.json"))
+        self.assertTrue(_is_sensitive_file("config/database.yml"))
+        self.assertTrue(_is_sensitive_file("core/settings.py"))
+
+    def test_detects_keys_and_ssh_paths(self):
+        self.assertTrue(_is_sensitive_file("certs/server.pem"))
+        self.assertTrue(_is_sensitive_file("home/.ssh/id_rsa"))
+
+    def test_ordinary_source_not_sensitive(self):
+        self.assertFalse(_is_sensitive_file("src/utils/helpers.js"))
+        self.assertFalse(_is_sensitive_file("internal/handlers/user.go"))
+        self.assertFalse(_is_sensitive_file("lib/models/product.rb"))
+
+    def test_sensitive_file_emits_warning_issue(self):
+        fc = _fc("config/.env", "+API_KEY=secret\n", additions=1)
+        issues = analyze_file_changes([fc])
+        self.assertEqual(len(issues), 1)
+        self.assertEqual(issues[0]["title"], "Sensitive file modified")
+        self.assertEqual(issues[0]["severity"], "WARNING")

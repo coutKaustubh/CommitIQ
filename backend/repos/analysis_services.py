@@ -16,13 +16,92 @@ from .models import FileChange
 
 logger = logging.getLogger(__name__)
 
-# Files touching these paths get a WARNING (security / config sensitivity).
-SENSITIVE_FILE_MARKERS = (
-    "settings.py",
+# --- Sensitive file detection (stack-agnostic) ---
+# WARNING when a commit touches env, secrets, keys, or framework production config.
+# Substring rules are intentionally broad — this is advisory, not a secret scanner.
+
+# Exact basename match (lowercase), any repo language.
+SENSITIVE_FILENAMES = (
     ".env",
-    "middleware",
-    "secrets",
-    "credentials",
+    ".env.local",
+    ".env.production",
+    ".env.development",
+    ".env.staging",
+    ".env.test",
+    "secrets.json",
+    "secrets.yml",
+    "secrets.yaml",
+    "credentials.json",
+    "credentials.xml",
+    "service-account.json",
+    "google-services.json",
+    "id_rsa",
+    "id_dsa",
+    "id_ecdsa",
+    "id_ed25519",
+    "kubeconfig",
+    "terraform.tfvars",
+    "terraform.tfvars.json",
+    ".npmrc",
+    ".pypirc",
+    ".netrc",
+    "auth.json",
+    "firebase-adminsdk.json",
+)
+
+# Framework / runtime config files (exact basename) — not generic "config.js".
+SENSITIVE_CONFIG_FILENAMES = (
+    # Python / Django
+    "settings.py",
+    "settings.local.py",
+    "settings.prod.py",
+    "settings.production.py",
+    "local_settings.py",
+    # Java / Spring
+    "application.properties",
+    "application.yml",
+    "application.yaml",
+    "application-prod.yml",
+    "application-prod.yaml",
+    "application-production.yml",
+    "application-production.yaml",
+    # .NET
+    "appsettings.production.json",
+    "appsettings.secrets.json",
+    "web.config",
+    # Ruby / Rails
+    "database.yml",
+    "storage.yml",
+    "credentials.yml.enc",
+    # PHP
+    "wp-config.php",
+    # Go (common secret-adjacent names)
+    "config.prod.yaml",
+    "config.production.yaml",
+)
+
+# Private key / cert extensions on the filename.
+SENSITIVE_FILENAME_SUFFIXES = (
+    ".pem",
+    ".key",
+    ".p12",
+    ".pfx",
+    ".jks",
+    ".keystore",
+)
+
+# Substrings anywhere in the normalized repo path.
+SENSITIVE_PATH_MARKERS = (
+    "/secrets/",
+    "/.secrets/",
+    "/credentials/",
+    "/.credentials/",
+    "/.aws/",
+    "/.ssh/",
+    "/private/",
+    "/middleware/",  # auth middleware (Express, Django, etc.)
+    "secrets.",
+    "credentials.",
 )
 
 # Total line churn above this triggers a WARNING (large blast-radius change).
@@ -87,6 +166,37 @@ _JS_ORM_CALL_RES = (
 )
 
 
+def _normalize_repo_path(file_path):
+    """Lowercase path with forward slashes — for cross-platform matching."""
+    return (file_path or "").lower().replace("\\", "/")
+
+
+def _is_sensitive_file(file_path):
+    """
+    True if the path likely touches secrets, env, keys, or production config.
+
+    Works across Python, Node, Java, .NET, Rails, Go, etc. — path/name based only
+    (no language parser). False positives are acceptable at WARNING severity.
+    """
+    lower = _normalize_repo_path(file_path)
+    if not lower:
+        return False
+
+    basename = lower.rsplit("/", 1)[-1] # last part of the path for example /path/to/file.txt -> file.txt
+
+    if basename in SENSITIVE_FILENAMES or basename in SENSITIVE_CONFIG_FILENAMES:
+        return True
+
+    # .env, .env.local, .env.production, ...
+    if basename == ".env" or basename.startswith(".env."):
+        return True
+
+    if any(basename.endswith(suffix) for suffix in SENSITIVE_FILENAME_SUFFIXES):
+        return True
+
+    return any(marker in lower for marker in SENSITIVE_PATH_MARKERS)
+
+
 def _should_analyze_file(file_path):
     """
     Return False for docs, assets, lockfiles, and vendored paths.
@@ -113,8 +223,8 @@ def _should_analyze_file(file_path):
 def _added_patch_lines(patch):
     """Extract newly added lines from a unified diff patch (lines starting with +)."""
     return [
-        line[1:]
-        for line in (patch or "").splitlines()
+        line[1:] # 1: isliye kyunki + line ke pehle space hai eg: + line -> line
+        for line in (patch or "").splitlines() #patch is a string and we are splitting it into lines
         if line.startswith("+") and not line.startswith("+++")
     ]
 
@@ -147,12 +257,12 @@ def _is_loop_statement_line(line):
     )
 
 
-def _line_has_python_orm_get(line):
+def _line_has_python_orm_get(line): 
     code = _code_without_strings(line)
     return bool(_PYTHON_ORM_GET_RE.search(code))
 
 
-def _line_has_js_orm_get(line):
+def _line_has_js_orm_get(line): 
     code = _code_without_strings(line)
     return any(pattern.search(code) for pattern in _JS_ORM_CALL_RES)
 
@@ -331,7 +441,7 @@ def analyze_file_changes(file_changes):
          - Python: objects.get(
          - Node/Express: .findOne(, .findById(, .findByPk(, .findUnique(
       2. Large change: additions + deletions > 500 → WARNING
-      3. Sensitive file path → WARNING
+      3. Sensitive file path (env, secrets, keys, prod config — any stack) → WARNING
 
     Returns:
         List of dicts ready to insert as AnalysisIssue rows:
@@ -390,9 +500,8 @@ def analyze_file_changes(file_changes):
                 }
             )
 
-        # --- Rule 3: sensitive paths ---
-        lower_path = fc.file_path.lower()
-        if any(marker in lower_path for marker in SENSITIVE_FILE_MARKERS):
+        # --- Rule 3: sensitive paths (stack-agnostic) ---
+        if _is_sensitive_file(fc.file_path):
             issues.append(
                 {
                     "severity": "WARNING",
