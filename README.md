@@ -783,7 +783,11 @@ Detailed concept docs in [`Diagrams and Concepts/`](Diagrams%20and%20Concepts/):
 
 | Document | Topics |
 |----------|--------|
-| [`production.md`](Diagrams%20and%20Concepts/production.md) | Gunicorn, Nginx, Render/Vercel deploy, env vars |
+| [`SYSTEM_WALKTHROUGH.md`](Diagrams%20and%20Concepts/SYSTEM_WALKTHROUGH.md) | End-to-end system flows (Hinglish) |
+| [`FILE_TOUR.md`](Diagrams%20and%20Concepts/FILE_TOUR.md) | File-by-file tourist guide |
+| [`celery.md`](Diagrams%20and%20Concepts/celery.md) | Celery + Redis setup and analysis pipeline |
+| [`docker.md`](Diagrams%20and%20Concepts/docker.md) | Docker Compose local stack |
+| [`production.md`](Diagrams%20and%20Concepts/production.md) | Gunicorn, Render/Vercel deploy, env vars |
 | [`webhook.md`](Diagrams%20and%20Concepts/webhook.md) | Webhook debugging, signature verification |
 | [`ngrok.md`](Diagrams%20and%20Concepts/ngrok.md) | Local webhook testing with ngrok |
 | [`ReactFrontendtoDjango.md`](Diagrams%20and%20Concepts/ReactFrontendtoDjango.md) | Frontend ↔ backend request flow |
