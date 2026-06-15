@@ -11,7 +11,7 @@ The worker is a SEPARATE process from runserver (see docker-compose celery_worke
 import logging
 
 # shared_task: marks a function as a Celery task without importing the Celery app directly.
-from celery import shared_task
+from celery import shared_task  # pyright: ignore[reportMissingImports]
 from django.utils import timezone
 
 from . import analysis_services

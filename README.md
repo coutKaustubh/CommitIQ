@@ -2,7 +2,7 @@
 
 **Every commit tells a story. We read it.**
 
-CommitIQ is an AI-powered code regression and performance intelligence platform. It connects to your GitHub repositories, tracks commits in real time via webhooks, and surfaces a developer-focused dashboard for monitoring code health — with analysis, APM correlation, and Ask AI features on the roadmap.
+CommitIQ is an AI-powered code regression and performance intelligence platform. It connects to your GitHub repositories, tracks commits in real time via webhooks, runs **background static analysis** (Celery + Redis), and surfaces results on a developer-focused dashboard — with APM correlation and Ask AI on the roadmap.
 
 | | |
 |---|---|
@@ -39,18 +39,23 @@ CommitIQ is an AI-powered code regression and performance intelligence platform.
 
 - **Landing page** — DevTrack-inspired dark UI with violet accent, hero, feature cards, stats
 - **Authentication** — Email/password via Supabase + GitHub OAuth (PKCE)
-- **Dashboard** — Stats, connected repos, recent commits, performance graph (mock data for analysis)
+- **Dashboard** — Stats, connected repos, recent commits, **real analysis feed** (Celery pipeline); performance graph still mock
 - **Repositories** — List GitHub repos, connect/disconnect, view commits, auto webhook registration
-- **GitHub webhooks** — Push events saved to PostgreSQL with HMAC signature verification
+- **GitHub webhooks** — Push events saved to PostgreSQL; each commit **enqueued for background analysis**
+- **Static analysis (Celery)** — Rule-based checks: N+1 (Python + Node), large diffs, sensitive files (multi-stack paths)
+- **Commit detail** — Real issues, risk badges, job status polling, retry on failure
 - **Commit tracking** — Commits synced from GitHub API and webhook payloads
-- **Production deploy** — Vercel (frontend) + Render (backend) + Supabase + PostgreSQL
+- **Local stack** — Docker Compose: PostgreSQL + Redis + Django + Celery worker
+- **Production deploy** — Vercel (frontend) + Render (backend web) + Supabase + PostgreSQL
 
 ### Mock / Coming Soon
 
-- Static analysis results (N+1 detection, complexity) — UI built, backend pending
+- Performance graph on Dashboard (mock latency series)
+- Ask AI chat (mock responses — no RAG backend yet)
 - APM correlation (Datadog / New Relic)
-- Ask AI (RAG pipeline over codebase)
 - Smart alerts (Slack / email)
+- Production Celery worker + Redis (code ready; deploy as separate Render/Railway service + Upstash Redis)
+- LLM-powered explanations (current summary is rule-based text)
 
 ---
 
@@ -63,9 +68,11 @@ CommitIQ is an AI-powered code regression and performance intelligence platform.
 | **Backend** | Django 6, Django REST Framework |
 | **Auth** | Supabase Auth (JWT) |
 | **Database** | PostgreSQL |
+| **Task queue** | Redis (Celery broker) |
+| **Background jobs** | Celery worker (`process_commit` task) |
 | **GitHub** | REST API + Webhooks |
 | **Production server** | Gunicorn + WhiteNoise |
-| **Hosting** | Vercel (frontend), Render (backend) |
+| **Hosting** | Vercel (frontend), Render (backend web service) |
 
 ---
 
@@ -93,6 +100,11 @@ flowchart TB
     subgraph data [Data & Auth]
         PG[(PostgreSQL)]
         Supabase[Supabase Auth]
+        Redis[(Redis)]
+    end
+
+    subgraph worker [Background Worker]
+        Celery[Celery Worker<br/>process_commit]
     end
 
     subgraph github [GitHub]
@@ -103,13 +115,19 @@ flowchart TB
     Browser --> SPA
     SPA -->|Bearer JWT| Proxy
     SPA -->|OAuth PKCE| Supabase
-  Supabase -->|JWT verify| Django
+    Supabase -->|JWT verify| Django
     Proxy --> Gunicorn --> Django
     Django --> WhiteNoise
     Django --> PG
+    Django -->|enqueue task| Redis
+    Redis --> Celery
+    Celery --> PG
+    Celery -->|user token| GH_API
     Django -->|user token| GH_API
     GH_WH -->|POST push + HMAC| Proxy
 ```
+
+**Note:** On Render today, only the **web** service is deployed by default. For full analysis in production, add a **Redis** instance and a **Celery worker** service (see [Local Development](#local-development) and [Deployment](#deployment)).
 
 ### Request path (authenticated API call)
 
@@ -145,18 +163,21 @@ sequenceDiagram
 CommitIQ/
 ├── frontend/                    # React + Vite SPA
 │   ├── src/
-│   │   ├── api/client.js        # Fetch wrapper with JWT interceptor
+│   │   ├── api/
+│   │   │   ├── client.js        # Fetch wrapper with JWT interceptor
+│   │   │   └── analysis.js      # Analysis feed, commit detail, job polling
 │   │   ├── components/          # FoxLogo, RiskBadge, PerformanceGraph, etc.
-│   │   ├── data/mock.js         # Mock analysis data (until backend ready)
+│   │   ├── data/mock.js         # Mock data for performance graph + Ask AI only
 │   │   ├── lib/supabaseClient.js
-│   │   ├── pages/               # Landing, Dashboard, Repositories, AskAI, …
+│   │   ├── pages/               # Landing, Dashboard, Repositories, CommitDetail, AskAI, …
 │   │   └── utils/               # auth, greeting, riskColor, time, github
 │   ├── vercel.json              # SPA rewrites for React Router
 │   └── vite.config.js
 │
 ├── backend/                     # Django REST API
 │   ├── core/
-│   │   ├── settings.py          # Env-based config, CORS, static files
+│   │   ├── settings.py          # Env-based config, CORS, Celery, static files
+│   │   ├── celery.py            # Celery app bootstrap
 │   │   ├── urls.py              # Root URL routing
 │   │   └── wsgi.py
 │   ├── users/
@@ -164,17 +185,23 @@ CommitIQ/
 │   │   ├── views.py             # signup, login, me, sync-github-token
 │   │   └── urls.py
 │   ├── repos/
-│   │   ├── models.py            # UserProfile, Repository, Commit
+│   │   ├── models.py            # UserProfile, Repository, Commit, AnalysisJob, …
 │   │   ├── views.py             # repos, connect, disconnect, commits
-│   │   ├── webhook_views.py     # Receive GitHub push events
+│   │   ├── analysis_views.py    # Analysis APIs + job polling
+│   │   ├── analysis_services.py # Diff fetch, static analysis rules
+│   │   ├── tasks.py             # Celery: process_commit, enqueue
+│   │   ├── webhook_views.py     # Receive GitHub push + enqueue analysis
 │   │   ├── webhook_github.py    # Register/delete hooks via GitHub API
 │   │   ├── webhook_utils.py     # HMAC-SHA256 verification
 │   │   └── github_client.py     # GitHub REST helper
+│   ├── Dockerfile               # Backend image for Docker Compose
 │   ├── build.sh                 # Render build: install, migrate, collectstatic
 │   ├── Procfile                 # Gunicorn start command
 │   └── render.yaml              # Render blueprint
 │
-└── Diagrams and Concepts/       # Deep-dive docs (webhooks, ngrok, production, …)
+├── docker-compose.yml           # Local: postgres + redis + backend + celery_worker
+│
+└── Diagrams and Concepts/       # Deep-dive docs (webhooks, celery, docker, …)
 ```
 
 ---
@@ -185,6 +212,9 @@ CommitIQ/
 erDiagram
     UserProfile ||--o{ Repository : owns
     Repository ||--o{ Commit : contains
+    Commit ||--o| AnalysisJob : has
+    Commit ||--o{ FileChange : contains
+    AnalysisJob ||--o{ AnalysisIssue : finds
 
     UserProfile {
         uuid supabase_user_id PK
@@ -211,6 +241,31 @@ erDiagram
         datetime committed_at
         string html_url
     }
+
+    AnalysisJob {
+        int id PK
+        string status
+        string risk_level
+        text error_message
+        datetime started_at
+        datetime finished_at
+    }
+
+    FileChange {
+        string file_path
+        string status
+        int additions
+        int deletions
+        text patch
+    }
+
+    AnalysisIssue {
+        string severity
+        string title
+        string file_path
+        int line_number
+        text description
+    }
 ```
 
 | Model | Purpose |
@@ -218,6 +273,9 @@ erDiagram
 | **UserProfile** | Bridges Supabase auth user to app data; stores GitHub OAuth token |
 | **Repository** | A GitHub repo the user connected (`is_active=True`); stores webhook id |
 | **Commit** | Commit SHA + metadata synced from GitHub API or webhook push payload |
+| **AnalysisJob** | Background analysis state (`pending` → `running` → `done` / `failed`) + risk level |
+| **FileChange** | Per-file diff from GitHub commit API (patch, additions, deletions) |
+| **AnalysisIssue** | Static analysis findings (N+1, large diff, sensitive file, etc.) |
 
 ---
 
@@ -356,7 +414,26 @@ flowchart TD
     Parse --> Repo{Repo connected<br/>is_active=True?}
     Repo -->|no| Skip[200 skipped]
     Repo -->|yes| Save[Save commits to DB]
-    Save --> OK[200 saved count]
+    Save --> Queue[enqueue_commit_analysis<br/>process_commit.delay]
+    Queue --> OK[200 saved + queued]
+```
+
+After the webhook returns `200`, a **Celery worker** picks up `process_commit`: fetches the GitHub diff, runs rules, saves `FileChange` / `AnalysisIssue` rows, and marks `AnalysisJob` as `done`.
+
+```mermaid
+sequenceDiagram
+    participant WH as github_webhook
+    participant DB as PostgreSQL
+    participant R as Redis
+    participant W as Celery Worker
+    participant GH as GitHub API
+
+    WH->>DB: save Commit + AnalysisJob pending
+    WH->>R: process_commit.delay(commit_id)
+    WH-->>WH: return 200 fast
+    R->>W: deliver task
+    W->>GH: GET commit diff
+    W->>DB: FileChange, AnalysisIssue, job DONE
 ```
 
 **Security:** Webhooks do not use Supabase JWT. Authentication is `X-Hub-Signature-256` HMAC with `GITHUB_WEBHOOK_SECRET`.
@@ -398,6 +475,15 @@ Base URL: `http://127.0.0.1:8000` (local) or `https://commitiq-etsu.onrender.com
 | `POST` | `/retry-webhook/` | Bearer + GitHub token | Retry webhook for connected repo |
 | `GET` | `/{repo_id}/commits/` | Bearer + GitHub token | List/sync commits |
 
+### Analysis (`/api/repos/`)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/commits/recent-analysis/` | Bearer | Dashboard feed — recent analyzed commits + stats |
+| `GET` | `/commits/{sha}/analysis/` | Bearer | Full analysis for one commit (issues, files, job status) |
+| `GET` | `/analysis/jobs/{job_id}/` | Bearer | Poll job status (`pending` / `running` / `done` / `failed`) |
+| `POST` | `/analysis/retry/` | Bearer | Re-queue failed or stuck analysis |
+
 ### Webhooks
 
 | Method | Path | Auth | Description |
@@ -416,7 +502,7 @@ Base URL: `http://127.0.0.1:8000` (local) or `https://commitiq-etsu.onrender.com
 | `/auth/callback` | GitHub OAuth callback | No |
 | `/dashboard` | Dashboard overview | Yes |
 | `/dashboard/repositories` | Connect & manage repos | Yes |
-| `/dashboard/commits/:id` | Commit detail (mock analysis) | Yes |
+| `/dashboard/commits/:id` | Commit detail (real analysis + polling) | Yes |
 | `/dashboard/ask` | Ask AI chat (mock) | Yes |
 
 Protected routes redirect to `/` when `localStorage.access_token` is missing.
@@ -428,10 +514,46 @@ Protected routes redirect to `/` when `localStorage.access_token` is missing.
 ### Prerequisites
 
 - Node.js 18+
-- Python 3.12+
-- PostgreSQL database
+- Python 3.12+ (if not using Docker for backend)
+- Docker Desktop (recommended — runs Postgres + Redis + Celery worker together)
 - Supabase project (Auth + GitHub provider enabled)
 - GitHub account
+
+### Option A — Docker Compose (recommended for full analysis)
+
+Runs PostgreSQL, Redis, Django, and Celery worker in one command:
+
+```bash
+# From repo root
+docker compose up --build
+```
+
+Backend API: `http://127.0.0.1:8000`
+
+In a second terminal, run the frontend on the host:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+App: `http://localhost:5173`
+
+Ensure `backend/.env` exists (copy from `.env.example`). Docker Compose overrides `DATABASE_URL` and `CELERY_BROKER_URL` to use the `db` and `redis` services.
+
+Useful commands:
+
+```bash
+docker compose exec backend python manage.py migrate
+docker compose logs -f celery_worker
+```
+
+See [`Diagrams and Concepts/docker.md`](Diagrams%20and%20Concepts/docker.md) and [`Diagrams and Concepts/celery.md`](Diagrams%20and%20Concepts/celery.md).
+
+### Option B — Manual backend (no Celery worker)
+
+Analysis will **not** run in the background unless you also start Redis and a Celery worker separately.
 
 ### 1. Clone and configure
 
@@ -447,9 +569,9 @@ cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env
 ```
 
-Fill in `backend/.env` and `frontend/.env` with your Supabase credentials and `DATABASE_URL`.
+Fill in `backend/.env` and `frontend/.env` with your Supabase credentials. For Option B, set `DATABASE_URL` to your PostgreSQL instance.
 
-### 2. Backend
+### 2. Backend (Option B — manual)
 
 ```bash
 cd backend
@@ -466,6 +588,12 @@ python manage.py runserver
 ```
 
 API runs at `http://127.0.0.1:8000`.
+
+To run analysis manually with Option B, also start Redis and:
+
+```bash
+celery -A core worker -l info
+```
 
 ### 3. Frontend
 
@@ -515,6 +643,10 @@ Update `PUBLIC_API_URL`, `ALLOWED_HOSTS`, and `CSRF_TRUSTED_ORIGINS` in `backend
 | `ALLOWED_HOSTS` | Yes | Comma-separated allowed hostnames |
 | `CSRF_TRUSTED_ORIGINS` | Yes | HTTPS origins for Django admin CSRF |
 | `CORS_ALLOWED_ORIGINS` | Yes | Frontend origins allowed by CORS |
+| `CELERY_BROKER_URL` | Yes* | Redis URL for Celery queue (default `redis://127.0.0.1:6379/0`) |
+| `CELERY_RESULT_BACKEND` | No | Redis URL for task results (defaults to broker) |
+
+\* Required for background analysis. Docker Compose sets `redis://redis:6379/0` automatically.
 
 ### Frontend (`frontend/.env` / Vercel)
 
@@ -548,6 +680,13 @@ flowchart LR
     GitHub[GitHub] -->|webhook POST| Render
     User -->|OAuth| Supabase
 ```
+
+For **full analysis in production**, add:
+
+- **Redis** — e.g. Upstash or Render Redis (`CELERY_BROKER_URL`)
+- **Background worker** — separate service running `celery -A core worker -l info --concurrency=2`
+
+Until the worker is deployed, webhooks still save commits but analysis jobs stay `pending` unless you run the stack locally with Docker Compose.
 
 ### Backend — Render
 
@@ -583,6 +722,8 @@ Or import `backend/render.yaml` as a Render Blueprint.
 [ ] Sign in with GitHub works on production
 [ ] Connect repo → Webhook active
 [ ] git push → commit appears in DB
+[ ] (Local) docker compose + celery_worker logs show process_commit
+[ ] (Prod) Redis + Celery worker deployed for live analysis
 ```
 
 Full deployment guide: [`Diagrams and Concepts/production.md`](Diagrams%20and%20Concepts/production.md)
@@ -617,16 +758,21 @@ Full deployment guide: [`Diagrams and Concepts/production.md`](Diagrams%20and%20
 - [x] GitHub repo listing, connect, disconnect
 - [x] Auto webhook registration on connect
 - [x] Webhook receive + HMAC verify + commit persistence
+- [x] Celery + Redis background analysis pipeline (local Docker Compose)
+- [x] Static analysis rules (N+1 Python/Node, large diff, sensitive files)
+- [x] Analysis APIs + Commit Detail polling + retry
 - [x] Full frontend UI (Landing, Dashboard, Repositories, Commit Detail, Ask AI)
-- [x] Production deploy (Vercel + Render)
+- [x] Production deploy (Vercel + Render web service)
 - [x] Gunicorn + WhiteNoise production server
 
 ### In Progress / Next
 
-- [ ] Real static analysis pipeline (replace mock data)
+- [ ] Production Celery worker + Redis deploy
+- [ ] Replace performance graph mock with real metrics
+- [ ] Ask AI RAG backend (chat is mock today)
 - [ ] APM integration (Datadog / New Relic)
-- [ ] Ask AI RAG backend
 - [ ] Slack / email alerts
+- [ ] More language rules (Java, Ruby, Go N+1 patterns)
 - [ ] GitHub App (alternative to per-repo OAuth webhooks)
 
 ---

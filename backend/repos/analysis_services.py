@@ -198,6 +198,7 @@ def _is_sensitive_file(file_path):
 
 
 def _should_analyze_file(file_path):
+    # sourcery skip: assign-if-exp, boolean-if-exp-identity, invert-any-all, reintroduce-else, remove-unnecessary-cast
     """
     Return False for docs, assets, lockfiles, and vendored paths.
 
