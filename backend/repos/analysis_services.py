@@ -236,7 +236,7 @@ def _code_without_strings(line):
 
 
 def _line_indent(line):
-    return len(line) - len(line.lstrip(" "))
+    return len(line) - len(line.lstrip(" ")) #this is used to get the indent of the line
 
 
 def _is_loop_statement_line(line):
@@ -274,23 +274,23 @@ def _block_has_n_plus_one(added_lines, body_checker):
     for ORM calls. Only flags when DB access appears INSIDE the loop block.
     """
     i = 0
-    while i < len(added_lines):
-        line = added_lines[i]
-        if not _is_loop_statement_line(line):
+    while i < len(added_lines): #used to iterate over the added lines
+        line = added_lines[i] #line is the current line
+        if not _is_loop_statement_line(line): #if the line is not a loop statement, then skip it
             i += 1
             continue
 
-        loop_indent = _line_indent(line)
-        j = i + 1
-        while j < len(added_lines):
+        loop_indent = _line_indent(line) #loop_indent is the indent of the loop
+        j = i + 1 #j is the index of the next line which is used to iterate over the added lines
+        while j < len(added_lines): #used to iterate over the added lines
             body_line = added_lines[j]
-            body_stripped = body_line.lstrip()
-            if not body_stripped or body_stripped.startswith("#"):
-                j += 1
+            body_stripped = body_line.lstrip() #body_stripped  means the body line without the leading spaces
+            if not body_stripped or body_stripped.startswith("#"): #if the body line is not stripped or starts with #, then skip it
+                j += 1 #increment the index of the next line
                 continue
 
-            body_indent = _line_indent(body_line)
-            if body_indent <= loop_indent:
+            body_indent = _line_indent(body_line) #body_indent is the indent of the body line
+            if body_indent <= loop_indent: #if the body indent is less than or equal to the loop indent, then break
                 break
 
             if body_checker(body_line):
@@ -307,6 +307,7 @@ def _block_has_n_plus_one(added_lines, body_checker):
         i += 1
 
     return False, None
+
 
 
 def _patch_has_n_plus_one(patch, file_path):
@@ -392,10 +393,10 @@ def save_file_changes(commit, diff_files):
             file_path=file_path,
             defaults={
                 "status": file_item.get("status") or "modified",
-                "additions": file_item.get("additions") or 0,
-                "deletions": file_item.get("deletions") or 0,
+                "additions": file_item.get("additions") or 0, #additions is the number of lines added
+                "deletions": file_item.get("deletions") or 0, #deletions is the number of lines deleted
                 # GitHub omits patch for very large files — store empty string then.
-                "patch": file_item.get("patch") or "",
+                "patch": file_item.get("patch") or "", #patch is the diff of the file
             },
         )
 
@@ -404,9 +405,9 @@ def save_file_changes(commit, diff_files):
 
 def _guess_line_number(patch, needle):
     """
-    Find approximate line number of `needle` inside a unified diff patch.
+    Find approximate line number of `needle`  (needle is the string we are searching for in the patch) inside a unified diff patch.
 
-    Counts lines starting with '+' (added lines in diff) — good enough for MVP UI.
+    Counts lines starting with '+' (added lines in diff) — good enough for MVP UI. (added lines in diff means the lines that are added in the diff)
     Returns None if not found.
     """
     if not patch or not needle:
@@ -414,12 +415,12 @@ def _guess_line_number(patch, needle):
 
     added_line_no = 0
     for line in patch.splitlines():
-        if line.startswith("@@"):
+        if line.startswith("@@"): #@@ - used to mark the start of the diff
             continue
-        if line.startswith("+"):
+        if line.startswith("+"): #+ line - used to mark the start of the added line
             added_line_no += 1
-            if needle.strip() in line:
-                return added_line_no
+            if needle.strip() in line: #needle is the string we are searching for
+                return added_line_no #return the line number of the added line
     return None
 
 

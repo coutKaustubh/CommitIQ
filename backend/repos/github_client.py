@@ -8,7 +8,9 @@ GITHUB_HEADERS_BASE = {
 
 
 def github_request(method, path, token, *, params=None, json=None, timeout=30):
-    """Call GitHub REST API with the user's OAuth token."""
+    """Call GitHub REST API with the user's OAuth token.""" # whats github rest api?
+    # GitHub REST API is a way to interact with the GitHub API using HTTP requests.
+    # It is a way to interact with the GitHub API using HTTP requests.
     url = path if path.startswith("http") else f"{GITHUB_API_BASE}{path}"
     headers = {
         **GITHUB_HEADERS_BASE,
