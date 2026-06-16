@@ -6,7 +6,7 @@ from django.conf import settings
 import logging
 
 from repos.models import UserProfile
-from repos.github_client import fetch_github_user_login
+from repos.github_client import fetch_github_user_info
 
 # Logger setup - errors track karne ke liye
 logger = logging.getLogger(__name__)
@@ -14,6 +14,40 @@ logger = logging.getLogger(__name__)
 # Supabase client - anon key use karenge kyunki
 # yeh public facing operations hain (signup/login)
 supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY)
+
+
+def _display_name_for(profile):
+    """GitHub real name → username → email prefix."""
+    if profile.github_display_name:
+        return profile.github_display_name
+    if profile.github_username:
+        return profile.github_username
+    if profile.email and "@" in profile.email:
+        return profile.email.split("@", 1)[0]
+    return "developer"
+
+
+def _refresh_github_profile_fields(profile):
+    """Fetch GitHub name/login when we have a token but profile fields are empty."""
+    if not profile.github_access_token:
+        return
+
+    needs_login = not profile.github_username
+    needs_name = not profile.github_display_name
+    if not needs_login and not needs_name:
+        return
+
+    info = fetch_github_user_info(profile.github_access_token)
+    updates = []
+    if info["login"] and profile.github_username != info["login"]:
+        profile.github_username = info["login"]
+        updates.append("github_username")
+    if info["name"] and profile.github_display_name != info["name"]:
+        profile.github_display_name = info["name"]
+        updates.append("github_display_name")
+    if updates:
+        updates.append("updated_at")
+        profile.save(update_fields=updates)
 
 
 @api_view(['POST'])
@@ -107,7 +141,15 @@ def login(request):
         if profile.github_access_token or profile.github_username:
             profile.github_access_token = ''
             profile.github_username = ''
-            profile.save(update_fields=['github_access_token', 'github_username', 'updated_at'])
+            profile.github_display_name = ''
+            profile.save(
+                update_fields=[
+                    'github_access_token',
+                    'github_username',
+                    'github_display_name',
+                    'updated_at',
+                ]
+            )
 
         # --- Token frontend ko dena ---
         return Response(
@@ -167,6 +209,8 @@ def me(request):
             profile.email = user.email
             profile.save(update_fields=['email', 'updated_at'])
 
+        _refresh_github_profile_fields(profile)
+
         return Response(
             {
                 'id': str(user.id),
@@ -174,6 +218,8 @@ def me(request):
                 'created_at': str(user.created_at),
                 'profile_id': profile.id,
                 'github_username': profile.github_username,
+                'github_display_name': profile.github_display_name,
+                'display_name': _display_name_for(profile),
                 'has_github_token': bool(profile.github_access_token),
                 'profile_created': profile_created,
             },
@@ -216,15 +262,26 @@ def sync_github_token(request):
         )
 
         profile.github_access_token = token
-        login = fetch_github_user_login(token)
-        if login:
-            profile.github_username = login
-        profile.save(update_fields=['github_access_token', 'github_username', 'updated_at'])
+        info = fetch_github_user_info(token)
+        if info["login"]:
+            profile.github_username = info["login"]
+        if info["name"]:
+            profile.github_display_name = info["name"]
+        profile.save(
+            update_fields=[
+                'github_access_token',
+                'github_username',
+                'github_display_name',
+                'updated_at',
+            ]
+        )
 
         return Response(
             {
                 'message': 'GitHub token saved',
                 'github_username': profile.github_username,
+                'github_display_name': profile.github_display_name,
+                'display_name': _display_name_for(profile),
                 'has_github_token': True,
             },
             status=status.HTTP_200_OK,

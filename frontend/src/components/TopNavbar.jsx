@@ -16,10 +16,10 @@ function navClass({ isActive }) {
   ].join(' ')
 }
 
-function TopNavbar({ userEmail }) {
+function TopNavbar({ userEmail, displayName }) {
   const navigate = useNavigate()
-  const username = userEmail ? userEmail.split('@')[0] : ''
-  const initial = (username || '?').charAt(0).toUpperCase()
+  const label = (displayName || (userEmail ? userEmail.split('@')[0] : '')).trim()
+  const initial = (label || '?').charAt(0).toUpperCase()
 
   async function handleLogout() {
     if (isLoggedIn()) await logoutApi()
@@ -49,7 +49,7 @@ function TopNavbar({ userEmail }) {
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/20 font-mono text-sm font-bold text-primary-light">
               {initial}
             </span>
-            <span className="max-w-[160px] truncate text-sm text-secondary">{userEmail || '…'}</span>
+            <span className="max-w-[160px] truncate text-sm text-secondary">{label || '…'}</span>
           </div>
           <button
             type="button"

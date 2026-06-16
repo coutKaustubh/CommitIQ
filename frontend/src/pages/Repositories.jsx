@@ -8,12 +8,13 @@ import FoxLogo from '../components/FoxLogo.jsx'
 import GitHubIcon from '../components/GitHubIcon.jsx'
 import SkeletonCard from '../components/SkeletonCard.jsx'
 import { sessionIsGitHubOAuth, syncGitHubToken } from '../utils/github.js'
-import { supabase } from '../lib/supabaseClient.js'
+import { getDisplayName } from '../utils/displayName.js'
 
 function Repositories() {
   const [repos, setRepos] = useState([])
   const [githubUsername, setGithubUsername] = useState('')
   const [userEmail, setUserEmail] = useState('')
+  const [displayName, setDisplayName] = useState('')
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState('')
@@ -28,6 +29,7 @@ function Repositories() {
     try {
       const me = await api('/api/users/me/')
       setUserEmail(me.email || '')
+      setDisplayName(getDisplayName(me))
 
       const { data: sbData } = await supabase.auth.getSession()
       const session = sbData?.session
@@ -137,7 +139,7 @@ function Repositories() {
   const connectedCount = repos.filter((r) => r.connected).length
 
   return (
-    <DashboardShell userEmail={userEmail}>
+    <DashboardShell userEmail={userEmail} displayName={displayName}>
       <div className="mb-8 flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="font-mono text-xs uppercase tracking-widest text-primary-light">Repositories</p>

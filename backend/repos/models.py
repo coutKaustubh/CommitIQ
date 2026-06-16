@@ -10,6 +10,12 @@ class UserProfile(models.Model):
     supabase_user_id = models.UUIDField(unique=True)
     email = models.EmailField()
     github_username = models.CharField(max_length=255, blank=True, default="")
+    github_display_name = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="GitHub profile name (user.name); falls back to github_username in UI.",
+    )
     github_access_token = models.TextField(
         blank=True,
         default="",

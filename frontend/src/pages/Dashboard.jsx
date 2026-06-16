@@ -9,6 +9,7 @@ import RiskBadge from '../components/RiskBadge.jsx'
 import SkeletonCard from '../components/SkeletonCard.jsx'
 import PerformanceGraph from '../components/PerformanceGraph.jsx'
 import { getGreeting } from '../utils/greeting.js'
+import { getDisplayName } from '../utils/displayName.js'
 import { timeAgo } from '../utils/time.js'
 import { MOCK_PERF_SERIES } from '../data/mock.js'
 
@@ -80,17 +81,20 @@ function Dashboard() {
     }
   }, [])
 
-  const username = user?.email ? user.email.split('@')[0] : 'developer'
+  const displayName = getDisplayName(user)
   const warningCount = analysisFeed.filter((i) => i.risk === 'WARNING').length
 
   return (
-    <DashboardShell userEmail={user?.email || (loading ? 'Loading…' : '')}>
+    <DashboardShell
+      userEmail={user?.email || (loading ? 'Loading…' : '')}
+      displayName={loading ? '' : displayName}
+    >
       <div className="mb-8">
         <p className="font-mono text-xs uppercase tracking-widest text-primary-light">
           Dashboard overview
         </p>
         <h1 className="mt-2 font-display text-3xl font-bold">
-          {greeting.text}, {username} <span className="text-2xl">👋</span>
+          {greeting.emoji} {greeting.text}, {displayName} <span className="text-2xl">👋</span>
         </h1>
         <p className="mt-1 text-secondary">Here is what changed across your commits.</p>
       </div>

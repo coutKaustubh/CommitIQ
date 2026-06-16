@@ -1,10 +1,10 @@
 import TopNavbar from './TopNavbar.jsx'
 
 // Shared chrome for all /dashboard/* pages: sticky navbar + centered content.
-function DashboardShell({ userEmail, children }) {
+function DashboardShell({ userEmail, displayName, children }) {
   return (
     <div className="min-h-screen bg-bg">
-      <TopNavbar userEmail={userEmail} />
+      <TopNavbar userEmail={userEmail} displayName={displayName} />
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">{children}</main>
     </div>
   )

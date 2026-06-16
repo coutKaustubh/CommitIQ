@@ -21,8 +21,18 @@ def github_request(method, path, token, *, params=None, json=None, timeout=30):
     )
 
 
+def fetch_github_user_info(token):
+    """Return GitHub login + display name for token, or empty strings on failure."""
+    response = github_request("GET", "/user", token)
+    if not response.ok:
+        return {"login": "", "name": ""}
+    data = response.json()
+    return {
+        "login": data.get("login") or "",
+        "name": (data.get("name") or "").strip(),
+    }
+
+
 def fetch_github_user_login(token):
     """Return GitHub username for token, or empty string on failure."""
-    response = github_request("GET", "/user", token)
-# sourcery skip: swap-if-expression
-    return "" if not response.ok else response.json().get("login") or ""
+    return fetch_github_user_info(token)["login"]
