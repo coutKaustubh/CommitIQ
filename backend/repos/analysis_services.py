@@ -13,6 +13,13 @@ import re
 
 from .github_client import github_request
 from .models import FileChange
+from .suggestion_playbook import (
+    get_suggestion,
+    resolve_large_change_query,
+    resolve_n_plus_one_query,
+    resolve_sensitive_query,
+    summary_line_for_query,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -447,7 +454,7 @@ def analyze_file_changes(file_changes):
 
     Returns:
         List of dicts ready to insert as AnalysisIssue rows:
-        { severity, title, file_path, line_number, description, suggestion }
+        { query, severity, title, file_path, line_number, description, suggestion }
     """
     issues = []
 
@@ -462,59 +469,61 @@ def analyze_file_changes(file_changes):
         has_n_plus_one, needle = _patch_has_n_plus_one(patch, fc.file_path)
         if has_n_plus_one:
             line_no = _guess_line_number(patch, needle)
-            lower_path = fc.file_path.lower()
-            if lower_path.endswith(".py"):
-                suggestion = (
-                    "Collect IDs in the loop, then fetch all rows with "
-                    "Model.objects.filter(id__in=ids) outside the loop."
-                )
-                problem_hint = "Loop body appears to call objects.get() per iteration."
-            else:
-                suggestion = (
-                    "Batch the lookup outside the loop — e.g. fetch all IDs with "
-                    "findAll({ where: { id: ids } }) or $in query, then map in memory."
-                )
-                problem_hint = "Loop body appears to run a per-row database query."
+            query = resolve_n_plus_one_query(fc.file_path, needle)
+            meta = get_suggestion(
+                query,
+                file_path=fc.file_path,
+                needle=needle,
+            )
             issues.append(
                 {
-                    "severity": "CRITICAL",
-                    "title": "Possible N+1 Query",
+                    "query": query,
+                    "severity": meta["severity"],
+                    "title": meta["title"],
                     "file_path": fc.file_path,
                     "line_number": line_no,
-                    "description": _extract_problem_snippet(patch) or problem_hint,
-                    "suggestion": suggestion,
+                    "description": _extract_problem_snippet(patch) or meta["problem_hint"],
+                    "suggestion": meta["suggestion"],
                 }
             )
 
         # --- Rule 2: very large diff ---
         if total_lines > LARGE_CHANGE_LINE_THRESHOLD:
+            query = resolve_large_change_query(fc.file_path)
+            meta = get_suggestion(
+                query,
+                file_path=fc.file_path,
+                context={
+                    "total_lines": total_lines,
+                    "additions": fc.additions or 0,
+                    "deletions": fc.deletions or 0,
+                },
+            )
             issues.append(
                 {
-                    "severity": "WARNING",
-                    "title": "Large change set",
+                    "query": query,
+                    "severity": meta["severity"],
+                    "title": meta["title"],
                     "file_path": fc.file_path,
                     "line_number": None,
-                    "description": (
-                        f"This file changed {total_lines} lines "
-                        f"(+{fc.additions}/-{fc.deletions}). Review carefully."
-                    ),
-                    "suggestion": "Split into smaller commits or add extra tests for this area.",
+                    "description": meta["problem_hint"],
+                    "suggestion": meta["suggestion"],
                 }
             )
 
         # --- Rule 3: sensitive paths (stack-agnostic) ---
         if _is_sensitive_file(fc.file_path):
+            query = resolve_sensitive_query(fc.file_path)
+            meta = get_suggestion(query, file_path=fc.file_path)
             issues.append(
                 {
-                    "severity": "WARNING",
-                    "title": "Sensitive file modified",
+                    "query": query,
+                    "severity": meta["severity"],
+                    "title": meta["title"],
                     "file_path": fc.file_path,
                     "line_number": None,
-                    "description": (
-                        f"Changes touch a sensitive path ({fc.file_path}). "
-                        "Double-check secrets and production config."
-                    ),
-                    "suggestion": "Ensure no credentials are committed; use environment variables.",
+                    "description": meta["problem_hint"],
+                    "suggestion": meta["suggestion"],
                 }
             )
 
@@ -536,26 +545,35 @@ def compute_risk_level(issues):
 
 def build_ai_summary(issues, commit_message):
     """
-    Simple text summary for CommitDetail "AI Explanation" section (no LLM yet).
+    Text summary for CommitDetail "AI Explanation" section (playbook-backed, no LLM).
 
-    Later you can swap this for an OpenAI/Anthropic call inside the worker.
+    Uses issue titles and playbook queries; later an LLM can replace or enrich this.
     """
+    headline = (commit_message or "").split("\n")[0][:120]
+
     if not issues:
         return (
-            f"No rule-based issues were found for commit «{commit_message.split(chr(10))[0]}». "
+            f"No rule-based issues were found for commit «{headline}». "
             "Static checks passed for N+1 patterns, large diffs, and sensitive files."
         )
 
     critical = [i for i in issues if i.get("severity") == "CRITICAL"]
     warnings = [i for i in issues if i.get("severity") == "WARNING"]
 
-    parts = [f"Analysis found {len(issues)} issue(s) in this commit."]
+    parts = [f"Analysis found {len(issues)} issue(s) in «{headline}»."]
     if critical:
+        first = critical[0]
+        label = summary_line_for_query(first.get("query", "")) or first.get("title", "")
         parts.append(
-            f"Critical: {critical[0]['title']} in {critical[0]['file_path']} — "
-            f"{critical[0].get('description', '')[:200]}"
+            f"Critical: {label} in {first.get('file_path', '?')} — "
+            f"{(first.get('description') or '')[:200]}"
         )
     if warnings:
-        parts.append(f"Warnings: {len(warnings)} item(s) including {warnings[0]['title']}.")
+        first_w = warnings[0]
+        label = summary_line_for_query(first_w.get("query", "")) or first_w.get("title", "")
+        parts.append(
+            f"Warnings ({len(warnings)}): includes {label} in {first_w.get('file_path', '?')}."
+        )
+    parts.append("Open each issue below for playbook-backed fix suggestions.")
 
     return " ".join(parts)

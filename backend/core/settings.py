@@ -16,8 +16,9 @@ from dotenv import load_dotenv
 import dj_database_url # type: ignore
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-# Always load backend/.env (cwd se independent); override=True taaki restart pe fresh values
-load_dotenv(BASE_DIR / '.env', override=True)
+# Load backend/.env for local dev. override=False so Docker Compose / shell env
+# (e.g. CELERY_BROKER_URL=redis://redis:6379/0) wins over .env file values.
+load_dotenv(BASE_DIR / '.env', override=False)
 
 
 # Quick-start development settings - unsuitable for production

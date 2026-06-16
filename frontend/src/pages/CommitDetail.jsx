@@ -256,7 +256,7 @@ function CommitDetail() {
                 </button>
               </form>
               <p className="mt-2 font-mono text-xs text-muted">
-                Rule-based summary for now — LLM integration can replace build_ai_summary() later.
+                Rule-based summary from the suggestion playbook — LLM can enrich this later.
               </p>
             </div>
           </section>

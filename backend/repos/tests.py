@@ -5,6 +5,12 @@ from .analysis_services import (
     _patch_has_n_plus_one,
     _should_analyze_file,
     analyze_file_changes,
+    build_ai_summary,
+)
+from .suggestion_playbook import (
+    get_suggestion,
+    resolve_n_plus_one_query,
+    resolve_sensitive_query,
 )
 
 
@@ -86,6 +92,8 @@ class NPlusOneRuleTests(SimpleTestCase):
         issues = analyze_file_changes([_fc("checkout/views.py", patch)])
         self.assertEqual(len(issues), 1)
         self.assertEqual(issues[0]["title"], "Possible N+1 Query")
+        self.assertEqual(issues[0]["query"], "n_plus_one.django_objects_get")
+        self.assertIn("filter(id__in=", issues[0]["suggestion"])
 
     def test_large_change_still_skips_markdown(self):
         fc = _fc("README.md", "+line\n" * 600, additions=600, deletions=0)
@@ -120,3 +128,67 @@ class SensitiveFileRuleTests(SimpleTestCase):
         self.assertEqual(len(issues), 1)
         self.assertEqual(issues[0]["title"], "Sensitive file modified")
         self.assertEqual(issues[0]["severity"], "WARNING")
+        self.assertEqual(issues[0]["query"], "sensitive_file.env")
+        self.assertIn("rotate", issues[0]["suggestion"].lower())
+
+
+class PlaybookSuggestionTests(SimpleTestCase):
+    def test_resolve_django_n_plus_one_query(self):
+        self.assertEqual(
+            resolve_n_plus_one_query("views.py", "objects.get("),
+            "n_plus_one.django_objects_get",
+        )
+
+    def test_resolve_sequelize_query(self):
+        self.assertEqual(
+            resolve_n_plus_one_query("routes.js", ".findByPk("),
+            "n_plus_one.sequelize_find_by_pk",
+        )
+
+    def test_django_playbook_has_batch_fix(self):
+        meta = get_suggestion("n_plus_one.django_objects_get", file_path="checkout/views.py")
+        self.assertIn("filter(id__in=", meta["suggestion"])
+        self.assertEqual(meta["severity"], "CRITICAL")
+
+    def test_sensitive_env_playbook(self):
+        meta = get_suggestion("sensitive_file.env", file_path="config/.env")
+        self.assertIn(".env.example", meta["suggestion"])
+        self.assertIn("config/.env", meta["problem_hint"])
+
+    def test_large_change_formats_line_counts(self):
+        meta = get_suggestion(
+            "large_change",
+            file_path="backend/views.py",
+            context={"total_lines": 612, "additions": 400, "deletions": 212},
+        )
+        self.assertIn("612", meta["problem_hint"])
+        self.assertIn("400", meta["problem_hint"])
+
+    def test_unknown_query_falls_back_to_family_generic(self):
+        meta = get_suggestion("n_plus_one.nonexistent_variant")
+        generic = get_suggestion("n_plus_one.generic")
+        self.assertEqual(meta["suggestion"], generic["suggestion"])
+
+    def test_sequelize_issue_uses_playbook_via_analyze(self):
+        patch = (
+            "+for (const order of orders) {\n"
+            "+  const user = await User.findByPk(order.userId);\n"
+            "+}\n"
+        )
+        issues = analyze_file_changes([_fc("routes/orders.js", patch)])
+        self.assertEqual(issues[0]["query"], "n_plus_one.sequelize_find_by_pk")
+        self.assertIn("findAll", issues[0]["suggestion"])
+
+    def test_build_ai_summary_mentions_playbook(self):
+        issues = [
+            {
+                "severity": "CRITICAL",
+                "title": "Possible N+1 Query",
+                "query": "n_plus_one.django_objects_get",
+                "file_path": "a.py",
+                "description": "loop",
+            }
+        ]
+        text = build_ai_summary(issues, "fix queries")
+        self.assertIn("playbook", text.lower())
+        self.assertIn("fix queries", text)
