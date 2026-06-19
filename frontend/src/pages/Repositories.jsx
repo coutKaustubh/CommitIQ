@@ -7,6 +7,7 @@ import CommitsList from '../components/CommitsList.jsx'
 import FoxLogo from '../components/FoxLogo.jsx'
 import GitHubIcon from '../components/GitHubIcon.jsx'
 import SkeletonCard from '../components/SkeletonCard.jsx'
+import { supabase } from '../lib/supabaseClient.js'
 import { sessionIsGitHubOAuth, syncGitHubToken } from '../utils/github.js'
 import { getDisplayName } from '../utils/displayName.js'
 

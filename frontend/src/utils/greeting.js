@@ -8,7 +8,6 @@ const SLOTS = [
     end: 60,
     options: [
       { emoji: '🌙', text: "It's midnight, cutie" },
-      { emoji: '✨', text: 'Midnight cutie vibes' },
       { emoji: '🦉', text: 'Still up? Midnight cutie' },
       { emoji: '💫', text: 'Clock struck twelve — hey cutie' },
     ],
@@ -20,7 +19,7 @@ const SLOTS = [
     options: [
       { emoji: '😴', text: 'I think sleep is not primary' },
       { emoji: '🦉', text: 'Night owl mode: sleep optional' },
-      { emoji: '☕', text: 'Sun did not rise yet, =and still shipping? Respect' },
+      { emoji: '☕', text: 'Sun did not rise yet, and still shipping? Respect' },
       { emoji: '🌃', text: 'Sleep can wait — code cannot' },
       { emoji: '🔥', text: 'Burning the midnight oil, huh?' },
     ],
