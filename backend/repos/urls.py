@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import analysis_views, views
+from . import analysis_views, rag_views, views
 
 urlpatterns = [
     path("github/", views.list_github_repos, name="repos-github-list"),
@@ -28,6 +28,11 @@ urlpatterns = [
         "commits/<str:sha>/analysis/",
         analysis_views.get_commit_analysis,
         name="repos-commit-analysis",
+    ),
+    path(
+        "<int:repo_id>/ask/",
+        rag_views.ask_repo,
+        name="repos-ask",
     ),
     path("<int:repo_id>/commits/", views.list_repo_commits, name="repos-commits"),
 ]

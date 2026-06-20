@@ -132,6 +132,9 @@ def process_commit(self, commit_id):
             len(issue_dicts),
         )
 
+        # RAG ingest — chunk + embed diffs/issues for Ask AI (separate task, analysis already DONE)
+        ingest_commit_for_rag.delay(commit.id)
+
     except Exception as exc:
         logger.exception("process_commit failed for commit_id=%s", commit_id)
 
@@ -143,6 +146,42 @@ def process_commit(self, commit_id):
         # Not final failure yet — Celery will re-queue after default_retry_delay (60s).
         job.status = AnalysisJob.Status.PENDING
         job.save(update_fields=["status"])
+        raise self.retry(exc=exc)
+
+
+@shared_task(
+    bind=True,
+    max_retries=2,
+    default_retry_delay=120,
+    name="repos.ingest_commit_for_rag",
+)
+def ingest_commit_for_rag(self, commit_id):
+    """
+    RAG ingest — FileChange + AnalysisIssue → CodeChunk rows (pgvector).
+
+    Runs after process_commit succeeds. Failure here does not fail analysis job.
+    """
+    from .rag_services import ingest_commit
+
+    try:
+        commit = Commit.objects.select_related("repository", "analysis_job").get(
+            id=commit_id
+        )
+    except Commit.DoesNotExist:
+        logger.error("ingest_commit_for_rag: no Commit for id=%s", commit_id)
+        return
+
+    try:
+        count = ingest_commit(commit)
+        logger.info(
+            "ingest_commit_for_rag done: commit=%s chunks=%s",
+            commit.sha[:7],
+            count,
+        )
+    except Exception as exc:
+        logger.exception("ingest_commit_for_rag failed for commit_id=%s", commit_id)
+        if self.request.retries >= self.max_retries:
+            return
         raise self.retry(exc=exc)
 
 
