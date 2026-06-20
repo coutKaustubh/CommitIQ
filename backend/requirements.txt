@@ -10,3 +10,6 @@ gunicorn
 whitenoise
 celery
 redis
+pgvector
+sentence-transformers
+groq

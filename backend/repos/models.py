@@ -1,4 +1,6 @@
+from django.conf import settings
 from django.db import models
+from pgvector.django import VectorField
 
 
 class UserProfile(models.Model):
@@ -206,3 +208,61 @@ class AnalysisIssue(models.Model):
 
     def __str__(self):
         return f"{self.severity}: {self.title}"
+
+
+class CodeChunk(models.Model):
+    """
+    One searchable text chunk for RAG (Ask AI).
+
+    Built from FileChange.patch (diff) or AnalysisIssue (finding) after Celery
+    analysis. embedding is a pgvector column for cosine similarity search.
+    """
+
+    class SourceType(models.TextChoices):
+        DIFF = "diff", "Diff"
+        ISSUE = "issue", "Issue"
+
+    repository = models.ForeignKey(
+        Repository,
+        on_delete=models.CASCADE,
+        related_name="code_chunks",
+    )
+    commit = models.ForeignKey(
+        Commit,
+        on_delete=models.CASCADE,
+        related_name="code_chunks",
+    )
+    file_path = models.CharField(
+        max_length=512,
+        blank=True,
+        default="",
+        help_text="Source file path; empty for some issue-only chunks.",
+    )
+    chunk_index = models.PositiveIntegerField(
+        default=0,
+        help_text="Order when a long patch is split into multiple chunks.",
+    )
+    content = models.TextField(
+        help_text="Metadata prefix + diff or issue text that was embedded.",
+    )
+    source_type = models.CharField(max_length=20, choices=SourceType.choices)
+    embedding = VectorField(
+        dimensions=settings.RAG_EMBEDDING_DIMENSIONS,
+        help_text="HuggingFace MiniLM-L6-v2 vector (384 dims by default).",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["commit", "file_path", "chunk_index", "source_type"],
+                name="unique_code_chunk_per_commit_file_index",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["repository", "commit"]),
+        ]
+
+    def __str__(self):
+        return f"{self.source_type}:{self.file_path or 'issue'}#{self.chunk_index} ({self.commit.sha[:7]})"

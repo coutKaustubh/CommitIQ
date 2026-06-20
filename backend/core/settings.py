@@ -57,6 +57,7 @@ INSTALLED_APPS = [
 NEW_APPS = [
     'rest_framework',
     'corsheaders',
+    'pgvector.django',
     'users',
     'repos',
 ]
@@ -183,3 +184,17 @@ CELERY_TIMEZONE = "UTC"
 # Auto-retry only our main analysis task on worker crash (task code has its own GitHub retry logic).
 CELERY_TASK_ACKS_LATE = True
 
+# ---------------------------------------------------------------------------
+# RAG (Ask AI) — pgvector chunks; embeddings via HuggingFace MiniLM (384-dim)
+# ---------------------------------------------------------------------------
+# Run once in Supabase SQL Editor: CREATE EXTENSION IF NOT EXISTS vector;
+RAG_EMBEDDING_DIMENSIONS = int(os.getenv("RAG_EMBEDDING_DIMENSIONS", "384"))
+RAG_EMBEDDING_MODEL = os.getenv(
+    "RAG_EMBEDDING_MODEL",
+    "sentence-transformers/all-MiniLM-L6-v2",
+)
+RAG_CHUNK_SIZE = int(os.getenv("RAG_CHUNK_SIZE", "800"))
+RAG_CHUNK_OVERLAP = int(os.getenv("RAG_CHUNK_OVERLAP", "100"))
+RAG_TOP_K = int(os.getenv("RAG_TOP_K", "5"))
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")

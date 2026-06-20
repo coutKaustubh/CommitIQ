@@ -1,6 +1,14 @@
 from django.contrib import admin
 
-from .models import AnalysisIssue, AnalysisJob, Commit, FileChange, Repository, UserProfile
+from .models import (
+    AnalysisIssue,
+    AnalysisJob,
+    CodeChunk,
+    Commit,
+    FileChange,
+    Repository,
+    UserProfile,
+)
 
 
 @admin.register(UserProfile)
@@ -57,3 +65,27 @@ class AnalysisIssueAdmin(admin.ModelAdmin):
     list_display = ("title", "severity", "file_path", "job_id", "line_number")
     list_filter = ("severity",)
     search_fields = ("title", "file_path", "job__commit__sha")
+
+
+@admin.register(CodeChunk)
+class CodeChunkAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "source_type",
+        "file_path",
+        "chunk_index",
+        "commit_short_sha",
+        "repository_name",
+        "created_at",
+    )
+    list_filter = ("source_type", "repository")
+    search_fields = ("file_path", "content", "commit__sha", "repository__full_name")
+    readonly_fields = ("created_at",)
+
+    @admin.display(description="Commit")
+    def commit_short_sha(self, obj):
+        return obj.commit.sha[:7]
+
+    @admin.display(description="Repository")
+    def repository_name(self, obj):
+        return obj.repository.full_name

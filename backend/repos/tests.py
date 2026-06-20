@@ -192,3 +192,26 @@ class PlaybookSuggestionTests(SimpleTestCase):
         text = build_ai_summary(issues, "fix queries")
         self.assertIn("playbook", text.lower())
         self.assertIn("fix queries", text)
+
+
+class RagServicesTests(SimpleTestCase):
+    def test_recursive_chunk_small_text_single_chunk(self):
+        from .rag_services import recursive_chunk_text
+
+        text = "hello world"
+        self.assertEqual(recursive_chunk_text(text, chunk_size=800), [text])
+
+    def test_recursive_chunk_large_text_multiple(self):
+        from .rag_services import recursive_chunk_text
+
+        text = "line\n" * 400
+        chunks = recursive_chunk_text(text, chunk_size=100, chunk_overlap=10)
+        self.assertGreater(len(chunks), 1)
+        self.assertTrue(all(len(c) <= 100 for c in chunks))
+
+    def test_build_rag_prompt_includes_question(self):
+        from .rag_services import build_rag_prompt
+
+        prompt = build_rag_prompt("owner/repo", [], "Where is N+1?")
+        self.assertIn("owner/repo", prompt)
+        self.assertIn("Where is N+1?", prompt)
