@@ -8,6 +8,7 @@ Query:  embed question → cosine search → prompt → Groq answer.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from django.conf import settings
@@ -291,6 +292,74 @@ def ingest_commit(commit: Commit) -> int:
 # Query — search + prompt + Groq
 # ---------------------------------------------------------------------------
 
+# "last commit" jaisa sawal date se aata hai — sirf vector similarity se nahi
+_LATEST_COMMIT_QUESTION = re.compile(
+    r"\b("
+    r"last|latest|most recent|newest|recent|just pushed"
+    r")\b.*\b("
+    r"commit|push|change|changes"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _asks_about_latest_commit(question: str) -> bool:
+    """True jab user clearly sabse naya commit puch raha ho."""
+    q = (question or "").strip()
+    if not q:
+        return False
+    if _LATEST_COMMIT_QUESTION.search(q):
+        return True
+    return any(
+        phrase in q.lower()
+        for phrase in (
+            "last commit",
+            "latest commit",
+            "most recent commit",
+            "newest commit",
+            "recent commit",
+            "last push",
+            "latest push",
+        )
+    )
+
+
+def _chunks_for_latest_commit(repository_id: int, *, limit: int = 5) -> list[CodeChunk]:
+    """
+    Sabse recent committed_at wale commit ke chunks — similarity search nahi.
+
+    User ne 'last commit' pucha to yeh pehle context mein aana chahiye.
+    """
+    anchor = (
+        CodeChunk.objects.filter(repository_id=repository_id)
+        .select_related("commit")
+        .order_by("-commit__committed_at")
+        .first()
+    )
+    if not anchor:
+        return []
+
+    return list(
+        CodeChunk.objects.filter(commit_id=anchor.commit_id)
+        .select_related("commit")
+        .order_by("chunk_index")[:limit]
+    )
+
+
+def _merge_chunk_lists(*lists: list[CodeChunk], limit: int) -> list[CodeChunk]:
+    """Pehle list ki priority — duplicate chunk ids skip."""
+    seen: set[int] = set()
+    merged: list[CodeChunk] = []
+    for chunk_list in lists:
+        for chunk in chunk_list:
+            if chunk.id in seen:
+                continue
+            seen.add(chunk.id)
+            merged.append(chunk)
+            if len(merged) >= limit:
+                return merged
+    return merged
+
 
 def search_similar_chunks(
     repository_id: int,
@@ -313,6 +382,35 @@ def search_similar_chunks(
     )
 
 
+def retrieve_chunks_for_question(
+    repository_id: int,
+    question: str,
+    *,
+    commit_id: int | None = None,
+) -> list[CodeChunk]:
+    """
+    Question ke liye context chunks — semantic + (kabhi) latest commit boost.
+
+    commit_id diya ho to pehle us commit ke chunks (Commit Detail Ask button).
+    """
+    k = settings.RAG_TOP_K
+    semantic = search_similar_chunks(repository_id, question, top_k=k)
+
+    if commit_id is not None:
+        commit_chunks = list(
+            CodeChunk.objects.filter(commit_id=commit_id)
+            .select_related("commit")
+            .order_by("chunk_index")[:k]
+        )
+        return _merge_chunk_lists(commit_chunks, semantic, limit=k)
+
+    if _asks_about_latest_commit(question):
+        latest = _chunks_for_latest_commit(repository_id, limit=k)
+        return _merge_chunk_lists(latest, semantic, limit=k)
+
+    return semantic
+
+
 def build_rag_prompt(
     repository_full_name: str,
     chunks: list[CodeChunk],
@@ -327,6 +425,7 @@ def build_rag_prompt(
                     f"--- Chunk {index} "
                     f"(file: {chunk.file_path or 'n/a'}, "
                     f"commit: {chunk.commit.sha[:7]}, "
+                    f"date: {chunk.commit.committed_at.date().isoformat()}, "
                     f"type: {chunk.source_type}) ---",
                     chunk.content,
                 )
@@ -335,14 +434,21 @@ def build_rag_prompt(
 
     context = "\n\n".join(context_blocks) if context_blocks else "(no context)"
 
-    return f"""You are CommitIQ, a code analysis assistant for the repository {repository_full_name}.
+    return f"""You are CommitIQ, a friendly senior engineer helping a developer understand their GitHub repository {repository_full_name}.
+
+TONE & STYLE:
+- Write like a helpful teammate — warm, clear, and conversational (not a dry file listing).
+- Use 2–4 short paragraphs when the question warrants it; open with a direct answer.
+- Explain WHAT changed and WHY it matters — not only which files were touched.
+- When you see product features (RAG, Celery, webhooks, static analysis, pgvector, etc.), briefly explain what they do for the user in plain language.
+- Prefer phrases like "In this commit, it looks like you…", "Based on the diff, you added…", "This probably helps users because…"
+- Mention risks or suggested follow-ups if findings appear in the context.
+- Cite commit SHAs and file paths naturally inside sentences — don't dump a bullet list unless the user asked for a list.
 
 RULES:
-- Answer ONLY using the CONTEXT below.
-- If the context does not contain enough information, say you do not have enough indexed data about that yet.
-- Cite file paths and commit SHAs when mentioning code.
-- Do NOT invent files, functions, or APIs not present in the context.
-- Be concise and actionable.
+- Ground every claim in the CONTEXT below — do not invent files, APIs, or behavior not supported by the context.
+- If the context is insufficient, say you don't have enough indexed data yet and suggest pushing/analyzing more commits.
+- If the user asks about the "last" or "latest" commit, prefer CONTEXT chunks with the most recent date.
 
 CONTEXT:
 {context}
@@ -366,7 +472,7 @@ def ask_groq(prompt: str) -> str:
     response = client.chat.completions.create(
         model=settings.GROQ_MODEL,
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.2,
+        temperature=settings.RAG_LLM_TEMPERATURE,
     )
     message = response.choices[0].message.content
     return (message or "").strip()
@@ -388,14 +494,22 @@ def format_sources(chunks: list[CodeChunk]) -> list[dict[str, str]]:
     return sources
 
 
-def ask_repository(repository, question: str) -> dict[str, Any]:
+def ask_repository(
+    repository,
+    question: str,
+    *,
+    commit_id: int | None = None,
+) -> dict[str, Any]:
     """
     Full RAG query for one repository.
 
-    Returns:
-        { "answer": str, "sources": list[dict], "chunks_used": int }
+    commit_id optional — Commit Detail page scopes context to that commit first.
     """
-    chunks = search_similar_chunks(repository.id, question)
+    chunks = retrieve_chunks_for_question(
+        repository.id,
+        question,
+        commit_id=commit_id,
+    )
     if not chunks:
         return {
             "answer": (
@@ -413,3 +527,12 @@ def ask_repository(repository, question: str) -> dict[str, Any]:
         "sources": format_sources(chunks),
         "chunks_used": len(chunks),
     }
+
+
+def ask_commit(commit: Commit, question: str) -> dict[str, Any]:
+    """RAG answer scoped to one commit (Commit Detail Ask form)."""
+    return ask_repository(
+        commit.repository,
+        question,
+        commit_id=commit.id,
+    )

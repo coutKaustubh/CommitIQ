@@ -169,6 +169,8 @@ def get_commit_analysis(request, sha):
     data["author"] = commit.author_name
     data["at"] = commit.committed_at.isoformat()
     data["risk"] = job.risk_level or "OK"
+    data["repo_id"] = commit.repository_id
+    data["repository_full_name"] = commit.repository.full_name
     data["ai"] = {
         "question": "Why does this commit matter?",
         "answer": build_ai_summary(

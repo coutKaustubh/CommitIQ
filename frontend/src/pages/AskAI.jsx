@@ -1,11 +1,46 @@
 import { useEffect, useRef, useState } from 'react'
-import { Send, Sparkles, MessageSquare } from 'lucide-react'
+import { Send, Sparkles, MessageSquare, Trash2 } from 'lucide-react'
 import { api } from '../api/client.js'
 import { askRepository } from '../api/rag.js'
 import DashboardShell from '../components/DashboardShell.jsx'
 import FoxLogo from '../components/FoxLogo.jsx'
 import { SUGGESTED_QUESTIONS } from '../data/mock.js'
 import { getDisplayName } from '../utils/displayName.js'
+
+const CHAT_STORAGE_KEY = 'commitiq_ask_chats'
+const REPO_STORAGE_KEY = 'commitiq_ask_repo_id'
+const MAX_STORED_MESSAGES = 80
+
+function loadAllChats() {
+  try {
+    const raw = localStorage.getItem(CHAT_STORAGE_KEY)
+    return raw ? JSON.parse(raw) : {}
+  } catch {
+    return {}
+  }
+}
+
+function loadChatForRepo(repoId) {
+  if (!repoId) return []
+  const all = loadAllChats()
+  const list = all[String(repoId)]
+  return Array.isArray(list) ? list : []
+}
+
+function saveChatForRepo(repoId, messages) {
+  if (!repoId) return
+  const all = loadAllChats()
+  all[String(repoId)] = messages.slice(-MAX_STORED_MESSAGES)
+  localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(all))
+}
+
+function loadSavedRepoId() {
+  return localStorage.getItem(REPO_STORAGE_KEY) || ''
+}
+
+function saveRepoId(repoId) {
+  if (repoId) localStorage.setItem(REPO_STORAGE_KEY, String(repoId))
+}
 
 function TypingDots() {
   return (
@@ -62,6 +97,7 @@ function AskAI() {
   const [displayName, setDisplayName] = useState('')
   const [error, setError] = useState('')
   const [loadingRepos, setLoadingRepos] = useState(true)
+  const [hydrated, setHydrated] = useState(false)
   const endRef = useRef(null)
 
   useEffect(() => {
@@ -83,9 +119,15 @@ function AskAI() {
         setDisplayName(getDisplayName(me))
         const list = reposData.connected || []
         setRepos(list)
-        if (list.length > 0) {
-          setRepoId(String(list[0].id))
+        const savedRepoId = loadSavedRepoId()
+        const initialRepo =
+          list.find((r) => String(r.id) === savedRepoId) || list[0] || null
+        if (initialRepo) {
+          const id = String(initialRepo.id)
+          setRepoId(id)
+          setMessages(loadChatForRepo(id))
         }
+        setHydrated(true)
       } catch (err) {
         if (!cancelled) setError(err.message || 'Could not load repositories')
       } finally {
@@ -97,6 +139,28 @@ function AskAI() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    if (!hydrated || !repoId) return
+    saveRepoId(repoId)
+  }, [repoId, hydrated])
+
+  useEffect(() => {
+    if (!hydrated || !repoId) return
+    saveChatForRepo(repoId, messages)
+  }, [messages, repoId, hydrated])
+
+  function handleRepoChange(nextRepoId) {
+    setRepoId(nextRepoId)
+    setMessages(loadChatForRepo(nextRepoId))
+    setInput('')
+    setError('')
+  }
+
+  function clearChat() {
+    setMessages([])
+    if (repoId) saveChatForRepo(repoId, [])
+  }
 
   async function send(text) {
     const q = (text ?? input).trim()
@@ -148,7 +212,7 @@ function AskAI() {
           <span className="text-secondary">Repository</span>
           <select
             value={repoId}
-            onChange={(e) => setRepoId(e.target.value)}
+            onChange={(e) => handleRepoChange(e.target.value)}
             disabled={loadingRepos || repos.length === 0}
             className="rounded-lg border border-border bg-surface px-3 py-2 text-content outline-none focus:border-primary"
           >
@@ -173,6 +237,14 @@ function AskAI() {
 
       <div className="grid h-[calc(100vh-14rem)] gap-5 lg:grid-cols-[260px_1fr]">
         <aside className="hidden flex-col rounded-xl border border-border bg-surface p-4 lg:flex">
+          <button
+            type="button"
+            onClick={clearChat}
+            disabled={messages.length === 0 || typing}
+            className="mb-4 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-secondary hover:bg-surface-hover hover:text-content disabled:opacity-50"
+          >
+            <Trash2 size={15} /> New chat
+          </button>
           <p className="mb-2 font-mono text-xs uppercase tracking-widest text-muted">Tips</p>
           <div className="space-y-2 text-sm text-secondary">
             <p>Questions use indexed diffs + analysis findings from pushed commits.</p>
@@ -263,7 +335,7 @@ function AskAI() {
         </section>
       </div>
       <p className="mt-3 flex items-center gap-1.5 font-mono text-xs text-muted">
-        <Sparkles size={12} /> RAG: pgvector search + Groq · requires GROQ_API_KEY on backend
+        <Sparkles size={12} /> Chat saved in this browser per repo · refresh safe
       </p>
     </DashboardShell>
   )

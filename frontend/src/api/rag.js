@@ -7,3 +7,11 @@ export function askRepository(repoId, question) {
     body: JSON.stringify({ question }),
   })
 }
+
+/** POST /api/repos/commits/{sha}/ask/ — RAG scoped to one commit (Commit Detail). */
+export function askCommit(sha, question) {
+  return api(`/api/repos/commits/${encodeURIComponent(sha)}/ask/`, {
+    method: 'POST',
+    body: JSON.stringify({ question }),
+  })
+}

@@ -215,3 +215,10 @@ class RagServicesTests(SimpleTestCase):
         prompt = build_rag_prompt("owner/repo", [], "Where is N+1?")
         self.assertIn("owner/repo", prompt)
         self.assertIn("Where is N+1?", prompt)
+
+    def test_asks_about_latest_commit_detects_phrases(self):
+        from .rag_services import _asks_about_latest_commit
+
+        self.assertTrue(_asks_about_latest_commit("Can you tell me about my last commit"))
+        self.assertTrue(_asks_about_latest_commit("what was the latest push"))
+        self.assertFalse(_asks_about_latest_commit("Where is N+1 in checkout?"))

@@ -5,6 +5,7 @@ import DashboardShell from '../components/DashboardShell.jsx'
 import RiskBadge from '../components/RiskBadge.jsx'
 import { timeAgo } from '../utils/time.js'
 import { fetchCommitAnalysis, fetchAnalysisJob, retryAnalysis } from '../api/analysis.js'
+import { askCommit } from '../api/rag.js'
 
 function CodeBlock({ title, code, tone }) {
   const toneClass =
@@ -32,8 +33,10 @@ function CommitDetail() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [retrying, setRetrying] = useState(false)
-  const [question, setQuestion] = useState('Why does this commit matter?')
+  const [question, setQuestion] = useState('What logic was added in this commit?')
   const [answer, setAnswer] = useState('')
+  const [asking, setAsking] = useState(false)
+  const [askError, setAskError] = useState('')
 
   // Initial load: fetch full analysis payload for this commit SHA.
   useEffect(() => {
@@ -47,7 +50,7 @@ function CommitDetail() {
         if (!cancelled) {
           setAnalysis(data)
           setAnswer(data.ai?.answer || '')
-          setQuestion(data.ai?.question || 'Why does this commit matter?')
+          setQuestion('What logic was added in this commit?')
         }
       } catch (err) {
         if (!cancelled) setError(err.message || 'Could not load analysis')
@@ -101,9 +104,21 @@ function CommitDetail() {
     }
   }
 
-  function ask(e) {
+  async function handleAsk(e) {
     e.preventDefault()
-    setAnswer(analysis?.ai?.answer || 'Analysis summary not available yet.')
+    const q = question.trim()
+    if (!q || asking || !shaParam) return
+
+    setAskError('')
+    setAsking(true)
+    try {
+      const res = await askCommit(shaParam, q)
+      setAnswer(res.answer || 'No answer returned.')
+    } catch (err) {
+      setAskError(err.message || 'Could not get an AI answer. Check GROQ_API_KEY on the backend.')
+    } finally {
+      setAsking(false)
+    }
   }
 
   const isAnalyzing = analysis && ['pending', 'running'].includes(analysis.status)
@@ -241,22 +256,27 @@ function CommitDetail() {
                   {answer || 'Summary will appear when analysis completes.'}
                 </p>
               </div>
-              <form onSubmit={ask} className="mt-4 flex gap-2">
+              <form onSubmit={handleAsk} className="mt-4 flex gap-2">
                 <input
                   value={question}
                   onChange={(e) => setQuestion(e.target.value)}
                   placeholder="Ask about this commit…"
-                  className="flex-1 rounded-lg border border-border bg-bg px-3.5 py-2.5 text-sm text-content outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
+                  disabled={asking}
+                  className="flex-1 rounded-lg border border-border bg-bg px-3.5 py-2.5 text-sm text-content outline-none focus:border-primary focus:ring-2 focus:ring-primary/30 disabled:opacity-60"
                 />
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary/90"
+                  disabled={asking}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-60"
                 >
-                  <Send size={15} /> Ask
+                  <Send size={15} /> {asking ? 'Thinking…' : 'Ask'}
                 </button>
               </form>
+              {askError && (
+                <p className="mt-2 text-sm text-danger">{askError}</p>
+              )}
               <p className="mt-2 font-mono text-xs text-muted">
-                Rule-based summary from the suggestion playbook — LLM can enrich this later.
+                Playbook summary above · Ask uses RAG + Groq on this commit&apos;s indexed diff
               </p>
             </div>
           </section>

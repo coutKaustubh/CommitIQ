@@ -30,6 +30,11 @@ urlpatterns = [
         name="repos-commit-analysis",
     ),
     path(
+        "commits/<str:sha>/ask/",
+        rag_views.ask_commit_view,
+        name="repos-commit-ask",
+    ),
+    path(
         "<int:repo_id>/ask/",
         rag_views.ask_repo,
         name="repos-ask",
