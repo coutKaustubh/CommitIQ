@@ -8,7 +8,8 @@ import Signup from './pages/Signup.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import Repositories from './pages/Repositories.jsx'
 import CommitDetail from './pages/CommitDetail.jsx'
-import AskAI from './pages/AskAI.jsx'
+import AskRepoPicker from './pages/AskRepoPicker.jsx'
+import AskRepoChat from './pages/AskRepoChat.jsx'
 import AuthCallback from './pages/AuthCallback.jsx'
 
 function App() {
@@ -62,7 +63,23 @@ function App() {
           path="/dashboard/ask"
           element={
             <ProtectedRoute>
-              <AskAI />
+              <AskRepoPicker />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/ask/:repoId"
+          element={
+            <ProtectedRoute>
+              <AskRepoChat />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/ask/:repoId/c/:chatId"
+          element={
+            <ProtectedRoute>
+              <AskRepoChat />
             </ProtectedRoute>
           }
         />
