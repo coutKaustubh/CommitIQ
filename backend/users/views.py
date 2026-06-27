@@ -1,6 +1,8 @@
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, throttle_classes
 from rest_framework.response import Response
 from rest_framework import status
+
+from core.throttling import AuthIPRateThrottle
 from supabase import create_client # type: ignore
 from django.conf import settings
 import logging
@@ -51,6 +53,7 @@ def _refresh_github_profile_fields(profile):
 
 
 @api_view(['POST'])
+@throttle_classes([AuthIPRateThrottle])
 def signup(request):
     """
     Naya user register karna
@@ -111,6 +114,7 @@ def signup(request):
 
 
 @api_view(['POST'])
+@throttle_classes([AuthIPRateThrottle])
 def login(request):
     """
     Existing user ka login

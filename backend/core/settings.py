@@ -155,11 +155,31 @@ GITHUB_WEBHOOK_SECRET = os.getenv('GITHUB_WEBHOOK_SECRET', '')
 # Public backend URL (no trailing slash) — used to register GitHub webhooks on connect.
 PUBLIC_API_URL = os.getenv('PUBLIC_API_URL', 'http://127.0.0.1:8000').rstrip('/')
 
+# Redis cache — DRF throttling counters (separate DB index from Celery broker when possible)
+_broker_url = os.getenv("CELERY_BROKER_URL", "redis://127.0.0.1:6379/0")
+_cache_url = os.getenv("REDIS_CACHE_URL")
+if not _cache_url:
+    if _broker_url.rstrip("/").endswith("/0"):
+        _cache_url = _broker_url.rsplit("/", 1)[0] + "/1"
+    else:
+        _cache_url = _broker_url
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": _cache_url,
+    }
+}
+
 # DRF
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.AllowAny',
-    ]
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'ask_ai': os.getenv('THROTTLE_ASK_AI', '20/hour'),
+        'auth': os.getenv('THROTTLE_AUTH', '5/minute'),
+    },
 }
 
 # CORS — comma-separated origins in .env for production (Vercel URL, etc.)

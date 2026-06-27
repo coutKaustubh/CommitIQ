@@ -5,8 +5,10 @@ Ask AI API — RAG query over indexed commit chunks for one repository.
 import logging
 
 from rest_framework import status
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, throttle_classes
 from rest_framework.response import Response
+
+from core.throttling import AskAIRateThrottle
 
 from .rag_services import ask_commit, ask_repository
 from .views import get_connected_repository, get_user_profile
@@ -32,6 +34,7 @@ def _parse_question(request):
 
 
 @api_view(["POST"])
+@throttle_classes([AskAIRateThrottle])
 def ask_commit_view(request, sha):
     """
     POST /api/repos/commits/{sha}/ask/
@@ -75,6 +78,7 @@ def ask_commit_view(request, sha):
 
 
 @api_view(["POST"])
+@throttle_classes([AskAIRateThrottle])
 def ask_repo(request, repo_id):
     """
     POST /api/repos/{repo_id}/ask/

@@ -68,7 +68,11 @@ export async function api(path, options = {}, retried = false) {
   }
 
   if (!response.ok) {
-    const message = data?.error || data?.detail || `Request failed (${response.status})`
+    let message = data?.error || data?.detail || `Request failed (${response.status})`
+    if (response.status === 429) {
+      message =
+        'Too many requests — please wait a few minutes before trying again.'
+    }
     const err = new Error(message)
     err.status = response.status
     err.data = data
