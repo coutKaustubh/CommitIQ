@@ -2,7 +2,7 @@
 
 **Every commit tells a story. We read it.**
 
-CommitIQ is an AI-powered code regression and performance intelligence platform. It connects to your GitHub repositories, tracks commits in real time via webhooks, runs **background static analysis** (Celery + Redis), and surfaces results on a developer-focused dashboard — with APM correlation and Ask AI on the roadmap.
+CommitIQ is an AI-powered code regression and performance intelligence platform. It connects to your GitHub repositories, tracks commits in real time via webhooks, runs **background static analysis** (Celery + Redis), surfaces results on a developer-focused dashboard, and includes **Ask AI** — a RAG pipeline over indexed commit diffs and analysis findings (Groq + pgvector).
 
 | | |
 |---|---|
@@ -43,7 +43,10 @@ CommitIQ is an AI-powered code regression and performance intelligence platform.
 - **Repositories** — List GitHub repos, connect/disconnect, view commits, auto webhook registration
 - **GitHub webhooks** — Push events saved to PostgreSQL; each commit **enqueued for background analysis**
 - **Static analysis (Celery)** — Rule-based checks: N+1 (Python + Node), large diffs, sensitive files (multi-stack paths)
-- **Commit detail** — Real issues, risk badges, job status polling, retry on failure
+- **Commit detail** — Real issues, risk badges, job status polling, retry on failure, **per-commit Ask AI**
+- **Ask AI (RAG)** — pgvector chunk index, HuggingFace embeddings, Groq answers with source citations
+- **Ask AI UI** — Repo picker → per-repo chat rooms; multiple chat sessions (ChatGPT-style sidebar, `localStorage`)
+- **Rate limiting** — DRF throttling via Redis: Ask AI (per user), login/signup (per IP)
 - **Commit tracking** — Commits synced from GitHub API and webhook payloads
 - **Local stack** — Docker Compose: PostgreSQL + Redis + Django + Celery worker
 - **Production deploy** — Vercel (frontend) + Render (backend web) + Supabase + PostgreSQL
@@ -51,11 +54,11 @@ CommitIQ is an AI-powered code regression and performance intelligence platform.
 ### Mock / Coming Soon
 
 - Performance graph on Dashboard (mock latency series)
-- Ask AI chat (mock responses — no RAG backend yet)
 - APM correlation (Datadog / New Relic)
 - Smart alerts (Slack / email)
 - Production Celery worker + Redis (code ready; deploy as separate Render/Railway service + Upstash Redis)
-- LLM-powered explanations (current summary is rule-based text)
+- Chat history in database (today: browser `localStorage` only)
+- LLM-powered playbook explanations (current summary is rule-based text)
 
 ---
 
@@ -67,9 +70,10 @@ CommitIQ is an AI-powered code regression and performance intelligence platform.
 | **Charts & Icons** | Recharts, Lucide React |
 | **Backend** | Django 6, Django REST Framework |
 | **Auth** | Supabase Auth (JWT) |
-| **Database** | PostgreSQL |
-| **Task queue** | Redis (Celery broker) |
-| **Background jobs** | Celery worker (`process_commit` task) |
+| **Database** | PostgreSQL + **pgvector** (RAG embeddings) |
+| **Task queue** | Redis (Celery broker + DRF throttle cache) |
+| **Background jobs** | Celery worker (`process_commit`, `ingest_commit_for_rag`) |
+| **RAG / LLM** | HuggingFace MiniLM embeddings, Groq API |
 | **GitHub** | REST API + Webhooks |
 | **Production server** | Gunicorn + WhiteNoise |
 | **Hosting** | Vercel (frontend), Render (backend web service) |
@@ -164,19 +168,24 @@ CommitIQ/
 ├── frontend/                    # React + Vite SPA
 │   ├── src/
 │   │   ├── api/
-│   │   │   ├── client.js        # Fetch wrapper with JWT interceptor
-│   │   │   └── analysis.js      # Analysis feed, commit detail, job polling
-│   │   ├── components/          # FoxLogo, RiskBadge, PerformanceGraph, etc.
-│   │   ├── data/mock.js         # Mock data for performance graph + Ask AI only
+│   │   │   ├── client.js        # Fetch wrapper with JWT + 429 handling
+│   │   │   ├── analysis.js      # Analysis feed, commit detail, job polling
+│   │   │   └── rag.js           # Ask AI API helpers
+│   │   ├── components/          # FoxLogo, RiskBadge, PerformanceGraph, ask/…
+│   │   ├── data/mock.js         # Mock data for performance graph + suggested questions
 │   │   ├── lib/supabaseClient.js
-│   │   ├── pages/               # Landing, Dashboard, Repositories, CommitDetail, AskAI, …
-│   │   └── utils/               # auth, greeting, riskColor, time, github
+│   │   ├── pages/               # Landing, Dashboard, Repositories, CommitDetail, AskRepoPicker, AskRepoChat, …
+│   │   └── utils/               # auth, askChatStorage, greeting, riskColor, time, github
+│   ├── public/
+│   │   ├── logo.png             # Brand fox logo + favicon
+│   │   └── favicon.png
 │   ├── vercel.json              # SPA rewrites for React Router
 │   └── vite.config.js
 │
 ├── backend/                     # Django REST API
 │   ├── core/
-│   │   ├── settings.py          # Env-based config, CORS, Celery, static files
+│   │   ├── settings.py          # Env-based config, CORS, Celery, RAG, throttling, static files
+│   │   ├── throttling.py        # Supabase user + IP rate limit classes
 │   │   ├── celery.py            # Celery app bootstrap
 │   │   ├── urls.py              # Root URL routing
 │   │   └── wsgi.py
@@ -185,11 +194,13 @@ CommitIQ/
 │   │   ├── views.py             # signup, login, me, sync-github-token
 │   │   └── urls.py
 │   ├── repos/
-│   │   ├── models.py            # UserProfile, Repository, Commit, AnalysisJob, …
+│   │   ├── models.py            # UserProfile, Repository, Commit, AnalysisJob, CodeChunk, …
 │   │   ├── views.py             # repos, connect, disconnect, commits
 │   │   ├── analysis_views.py    # Analysis APIs + job polling
 │   │   ├── analysis_services.py # Diff fetch, static analysis rules
-│   │   ├── tasks.py             # Celery: process_commit, enqueue
+│   │   ├── rag_services.py      # Chunking, embeddings, vector search, Groq
+│   │   ├── rag_views.py         # POST …/ask/ endpoints
+│   │   ├── tasks.py             # Celery: process_commit, ingest_commit_for_rag
 │   │   ├── webhook_views.py     # Receive GitHub push + enqueue analysis
 │   │   ├── webhook_github.py    # Register/delete hooks via GitHub API
 │   │   ├── webhook_utils.py     # HMAC-SHA256 verification
@@ -214,6 +225,7 @@ erDiagram
     Repository ||--o{ Commit : contains
     Commit ||--o| AnalysisJob : has
     Commit ||--o{ FileChange : contains
+    Commit ||--o{ CodeChunk : indexed_for_rag
     AnalysisJob ||--o{ AnalysisIssue : finds
 
     UserProfile {
@@ -276,6 +288,7 @@ erDiagram
 | **AnalysisJob** | Background analysis state (`pending` → `running` → `done` / `failed`) + risk level |
 | **FileChange** | Per-file diff from GitHub commit API (patch, additions, deletions) |
 | **AnalysisIssue** | Static analysis findings (N+1, large diff, sensitive file, etc.) |
+| **CodeChunk** | RAG text chunk + pgvector embedding (from diff or issue, per commit) |
 
 ---
 
@@ -434,7 +447,10 @@ sequenceDiagram
     R->>W: deliver task
     W->>GH: GET commit diff
     W->>DB: FileChange, AnalysisIssue, job DONE
+    W->>R: ingest_commit_for_rag.delay (RAG index)
 ```
+
+After analysis completes, a second Celery task chunks diffs/issues, embeds them, and stores `CodeChunk` rows for Ask AI.
 
 **Security:** Webhooks do not use Supabase JWT. Authentication is `X-Hub-Signature-256` HMAC with `GITHUB_WEBHOOK_SECRET`.
 
@@ -483,6 +499,8 @@ Base URL: `http://127.0.0.1:8000` (local) or `https://commitiq-etsu.onrender.com
 | `GET` | `/commits/{sha}/analysis/` | Bearer | Full analysis for one commit (issues, files, job status) |
 | `GET` | `/analysis/jobs/{job_id}/` | Bearer | Poll job status (`pending` / `running` / `done` / `failed`) |
 | `POST` | `/analysis/retry/` | Bearer | Re-queue failed or stuck analysis |
+| `POST` | `/{repo_id}/ask/` | Bearer | RAG question scoped to one repo (rate limited) |
+| `POST` | `/commits/{sha}/ask/` | Bearer | RAG question scoped to one commit (rate limited) |
 
 ### Webhooks
 
@@ -502,8 +520,10 @@ Base URL: `http://127.0.0.1:8000` (local) or `https://commitiq-etsu.onrender.com
 | `/auth/callback` | GitHub OAuth callback | No |
 | `/dashboard` | Dashboard overview | Yes |
 | `/dashboard/repositories` | Connect & manage repos | Yes |
-| `/dashboard/commits/:id` | Commit detail (real analysis + polling) | Yes |
-| `/dashboard/ask` | Ask AI chat (mock) | Yes |
+| `/dashboard/commits/:id` | Commit detail (real analysis + per-commit Ask) | Yes |
+| `/dashboard/ask` | Ask AI — choose repository | Yes |
+| `/dashboard/ask/:repoId` | Ask AI — new chat for that repo | Yes |
+| `/dashboard/ask/:repoId/c/:chatId` | Ask AI — resume a saved chat | Yes |
 
 Protected routes redirect to `/` when `localStorage.access_token` is missing.
 
@@ -589,11 +609,15 @@ python manage.py runserver
 
 API runs at `http://127.0.0.1:8000`.
 
-To run analysis manually with Option B, also start Redis and:
+To run analysis and RAG ingest manually with Option B, also start Redis and:
 
 ```bash
-celery -A core worker -l info
+celery -A core worker -l info --pool=solo
 ```
+
+On Windows, use `--pool=solo` (default prefork is unsupported).
+
+**Ask AI / RAG setup:** In Supabase SQL Editor run `CREATE EXTENSION IF NOT EXISTS vector;`. Set `GROQ_API_KEY` in `backend/.env`. Push commits and wait for analysis + RAG ingest to finish before asking questions.
 
 ### 3. Frontend
 
@@ -645,8 +669,16 @@ Update `PUBLIC_API_URL`, `ALLOWED_HOSTS`, and `CSRF_TRUSTED_ORIGINS` in `backend
 | `CORS_ALLOWED_ORIGINS` | Yes | Frontend origins allowed by CORS |
 | `CELERY_BROKER_URL` | Yes* | Redis URL for Celery queue (default `redis://127.0.0.1:6379/0`) |
 | `CELERY_RESULT_BACKEND` | No | Redis URL for task results (defaults to broker) |
+| `REDIS_CACHE_URL` | No | Redis for DRF rate-limit counters (defaults to broker DB `/1`) |
+| `GROQ_API_KEY` | Yes** | Groq API key for Ask AI answers |
+| `GROQ_MODEL` | No | LLM model (default `llama-3.3-70b-versatile`) |
+| `RAG_EMBEDDING_MODEL` | No | HuggingFace model (default `sentence-transformers/all-MiniLM-L6-v2`) |
+| `RAG_TOP_K` | No | Chunks retrieved per question (default `5`) |
+| `THROTTLE_ASK_AI` | No | Ask AI limit per user (default `20/hour`) |
+| `THROTTLE_AUTH` | No | Login/signup limit per IP (default `5/minute`) |
 
-\* Required for background analysis. Docker Compose sets `redis://redis:6379/0` automatically.
+\* Required for background analysis. Docker Compose sets `redis://redis:6379/0` automatically.  
+\*\* Required for Ask AI responses. Embeddings run locally via `sentence-transformers`.
 
 ### Frontend (`frontend/.env` / Vercel)
 
@@ -724,6 +756,8 @@ Or import `backend/render.yaml` as a Render Blueprint.
 [ ] git push → commit appears in DB
 [ ] (Local) docker compose + celery_worker logs show process_commit
 [ ] (Prod) Redis + Celery worker deployed for live analysis
+[ ] Supabase `vector` extension enabled for RAG
+[ ] GROQ_API_KEY set for Ask AI
 ```
 
 Full deployment guide: [`Diagrams and Concepts/production.md`](Diagrams%20and%20Concepts/production.md)
@@ -740,6 +774,7 @@ Full deployment guide: [`Diagrams and Concepts/production.md`](Diagrams%20and%20
 | **CORS** | Explicit allowlist via `CORS_ALLOWED_ORIGINS` |
 | **GitHub token storage** | `UserProfile.github_access_token` in PostgreSQL (server-side only) |
 | **Secrets** | `.env` files gitignored; set in Render/Vercel dashboards |
+| **Rate limiting** | Redis-backed DRF throttling on Ask AI + login/signup (HTTP 429) |
 | **HTTPS** | Enforced in production via Render/Vercel TLS termination |
 
 ### Middleware exempt routes (no JWT required)
@@ -761,6 +796,9 @@ Full deployment guide: [`Diagrams and Concepts/production.md`](Diagrams%20and%20
 - [x] Celery + Redis background analysis pipeline (local Docker Compose)
 - [x] Static analysis rules (N+1 Python/Node, large diff, sensitive files)
 - [x] Analysis APIs + Commit Detail polling + retry
+- [x] Ask AI RAG pipeline (pgvector, Celery ingest, Groq, repo + commit ask APIs)
+- [x] Ask AI UI — repo picker, per-repo chat rooms, multiple sessions (`localStorage`)
+- [x] Rate limiting (Ask AI + auth endpoints)
 - [x] Full frontend UI (Landing, Dashboard, Repositories, Commit Detail, Ask AI)
 - [x] Production deploy (Vercel + Render web service)
 - [x] Gunicorn + WhiteNoise production server
@@ -769,7 +807,7 @@ Full deployment guide: [`Diagrams and Concepts/production.md`](Diagrams%20and%20
 
 - [ ] Production Celery worker + Redis deploy
 - [ ] Replace performance graph mock with real metrics
-- [ ] Ask AI RAG backend (chat is mock today)
+- [ ] Persist Ask AI chat history in database
 - [ ] APM integration (Datadog / New Relic)
 - [ ] Slack / email alerts
 - [ ] More language rules (Java, Ruby, Go N+1 patterns)
@@ -785,6 +823,7 @@ Detailed concept docs in [`Diagrams and Concepts/`](Diagrams%20and%20Concepts/):
 |----------|--------|
 | [`SYSTEM_WALKTHROUGH.md`](Diagrams%20and%20Concepts/SYSTEM_WALKTHROUGH.md) | End-to-end system flows (Hinglish) |
 | [`FILE_TOUR.md`](Diagrams%20and%20Concepts/FILE_TOUR.md) | File-by-file tourist guide |
+| [`RAG.md`](Diagrams%20and%20Concepts/RAG.md) | Ask AI ingest, embeddings, vector search, Groq |
 | [`celery.md`](Diagrams%20and%20Concepts/celery.md) | Celery + Redis setup and analysis pipeline |
 | [`docker.md`](Diagrams%20and%20Concepts/docker.md) | Docker Compose local stack |
 | [`production.md`](Diagrams%20and%20Concepts/production.md) | Gunicorn, Render/Vercel deploy, env vars |
