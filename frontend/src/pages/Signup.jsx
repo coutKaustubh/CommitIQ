@@ -31,7 +31,7 @@ function Signup() {
   }
 
   return (
-    <div className="bg-grid flex min-h-screen items-center justify-center bg-bg px-4 py-12">
+    <div className="page-enter bg-grid flex min-h-screen items-center justify-center bg-bg px-4 py-12">
       <div className="w-full max-w-md">
         <Link to="/" className="mb-8 flex items-center justify-center gap-2">
           <FoxLogo size={34} />

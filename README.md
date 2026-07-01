@@ -37,7 +37,7 @@ CommitIQ is an AI-powered code regression and performance intelligence platform.
 
 ### Implemented
 
-- **Landing page** — DevTrack-inspired dark UI with violet accent, hero, feature cards, stats
+- **Landing page** — "Ember Fox" dark UI (orange accent), oversized hero with interactive PULSE headline, animated fox scene, floating feature cards, stats, scroll-reveal sections
 - **Authentication** — Email/password via Supabase + GitHub OAuth (PKCE)
 - **Dashboard** — Stats, connected repos, recent commits, **real analysis feed** (Celery pipeline); performance graph still mock
 - **Repositories** — List GitHub repos, connect/disconnect, view commits, auto webhook registration
@@ -48,6 +48,8 @@ CommitIQ is an AI-powered code regression and performance intelligence platform.
 - **Ask AI UI** — Repo picker → per-repo chat rooms; multiple chat sessions (ChatGPT-style sidebar, `localStorage`)
 - **Rate limiting** — DRF throttling via Redis: Ask AI (per user), login/signup (per IP)
 - **Commit tracking** — Commits synced from GitHub API and webhook payloads
+- **Unified dashboard shell** — Icon-only sidebar (expands on hover) shared across Dashboard, Repositories, Commit Detail, and Ask AI
+- **UI polish pass** — Ember Fox palette everywhere, page fade-in transitions, custom scrollbars, ember focus rings, count-up stat numbers, skeleton loaders, toast notifications, copy-to-clipboard feedback, auto-growing chat input, and a pulsing ring on CRITICAL risk badges
 - **Local stack** — Docker Compose: PostgreSQL + Redis + Django + Celery worker
 - **Production deploy** — Vercel (frontend) + Render (backend web) + Supabase + PostgreSQL
 
@@ -800,8 +802,11 @@ Full deployment guide: [`Diagrams and Concepts/production.md`](Diagrams%20and%20
 - [x] Ask AI UI — repo picker, per-repo chat rooms, multiple sessions (`localStorage`)
 - [x] Rate limiting (Ask AI + auth endpoints)
 - [x] Full frontend UI (Landing, Dashboard, Repositories, Commit Detail, Ask AI)
+- [x] Ember Fox visual redesign + production-grade UI polish (shared sidebar, transitions, micro-interactions)
 - [x] Production deploy (Vercel + Render web service)
 - [x] Gunicorn + WhiteNoise production server
+
+> **Production analysis note:** The Render web service does **not** run background jobs by default. For live analysis in production you must deploy a **Redis** instance (e.g. Upstash) and a separate **Celery worker** service (`celery -A core worker -l info --concurrency=2`). Without them, webhooks still persist commits but `AnalysisJob` rows stay `pending` until a worker consumes the queue. Locally, `docker compose up` runs Redis + the worker for you.
 
 ### In Progress / Next
 

@@ -187,7 +187,7 @@ function Repositories() {
   const connectedRepos = repos.filter((r) => r.connected)
 
   return (
-    <div className="min-h-screen bg-bg-base text-text-primary">
+    <div className="page-enter min-h-screen bg-bg-base text-text-primary">
       {/* ── Shared sidebar (Repositories active) ── */}
       <DashboardSidebar userEmail={userEmail} displayName={loading ? '' : displayName} />
 
@@ -308,7 +308,7 @@ function Repositories() {
                         <div
                           key={repo.id}
                           className={`rounded-xl border bg-bg-surface p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary hover:bg-bg-surface-elevated ${
-                            connecting ? 'animate-pulse border-primary' : 'border-border'
+                            connecting ? 'animate-border-pulse border-primary' : 'border-border'
                           }`}
                         >
                           {/* TOP ROW: fork icon + name + visibility pill */}
@@ -363,7 +363,7 @@ function Repositories() {
                                 type="button"
                                 disabled={connecting}
                                 onClick={() => handleConnect(repo)}
-                                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-primary/90 disabled:opacity-70"
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
                               >
                                 {connecting ? (
                                   <>

@@ -13,6 +13,7 @@ import { api } from '../api/client.js'
 import { fetchRecentAnalysis } from '../api/analysis.js'
 import DashboardSidebar from '../components/dashboard/DashboardSidebar.jsx'
 import StatTile from '../components/dashboard/StatTile.jsx'
+import CountUp from '../components/dashboard/CountUp.jsx'
 import RiskBadge from '../components/RiskBadge.jsx'
 import FoxLogo from '../components/FoxLogo.jsx'
 import PerformanceGraph from '../components/PerformanceGraph.jsx'
@@ -99,7 +100,7 @@ function Dashboard() {
   ).length
 
   return (
-    <div className="min-h-screen bg-bg-base text-text-primary">
+    <div className="page-enter min-h-screen bg-bg-base text-text-primary">
       {/* ── Left sidebar (icon-only, hover pe expand) ── */}
       <DashboardSidebar userEmail={user?.email || ''} displayName={loading ? '' : displayName} />
 
@@ -148,26 +149,26 @@ function Dashboard() {
                 <StatTile
                   icon={GitCommit}
                   label="Commits analyzed"
-                  value={commitsAnalyzed || '—'}
+                  value={commitsAnalyzed ? <CountUp value={commitsAnalyzed} /> : '—'}
                   color="text-violet"
                   trend="up"
                 />
                 <StatTile
                   icon={AlertTriangle}
                   label="Regressions found"
-                  value={regressionsCount}
+                  value={<CountUp value={regressionsCount} />}
                   color="text-primary"
                 />
                 <StatTile
                   icon={Zap}
                   label="Critical issues"
-                  value={criticalCount}
+                  value={<CountUp value={criticalCount} />}
                   color="text-danger"
                 />
                 <StatTile
                   icon={GitBranch}
                   label="Repos connected"
-                  value={connected.length}
+                  value={<CountUp value={connected.length} />}
                   color="text-success"
                 />
               </>
@@ -202,13 +203,18 @@ function Dashboard() {
                   ))}
                 </div>
               ) : analysisFeed.length === 0 ? (
-                // Empty state — fox + CTA
+                // Empty state — fox + "waiting" pulse + CTA
                 <div className="flex flex-col items-center rounded-xl border border-dashed border-border bg-bg-surface p-10 text-center">
-                  <FoxLogo size={40} className="opacity-40" />
+                  <FoxLogo size={40} className="opacity-50" />
                   <p className="mt-4 text-text-secondary">No commits analyzed yet</p>
                   <p className="mt-1 text-sm text-text-muted">
-                    Connect a repository and push a commit to get started.
+                    Push a commit to a connected repository to see analysis here
                   </p>
+                  {/* Pulsing dot — "waiting for commits" ka signal */}
+                  <span className="relative mt-4 flex h-2.5 w-2.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-60" />
+                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-primary" />
+                  </span>
                   <Link
                     to="/dashboard/repositories"
                     className="mt-5 inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90"

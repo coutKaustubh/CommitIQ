@@ -103,7 +103,7 @@ function AuthCallback() {
   }, [navigate])
 
   return (
-    <div className="bg-grid flex min-h-screen items-center justify-center bg-bg px-4">
+    <div className="page-enter bg-grid flex min-h-screen items-center justify-center bg-bg px-4">
       <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-10 text-center">
         <div className="mx-auto flex h-20 w-20 items-center justify-center">
           <FoxLogo size={64} className={error ? '' : 'animate-pulse-glow'} />

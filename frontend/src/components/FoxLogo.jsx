@@ -7,7 +7,7 @@ function FoxLogo({ size = 32, className = '' }) {
       width={size}
       height={size}
       alt="CommitIQ"
-      className={`object-contain brightness-0 invert ${className}`.trim()}
+      className={`object-contain ${className}`.trim()}
       aria-label="CommitIQ fox logo"
       role="img"
       draggable={false}

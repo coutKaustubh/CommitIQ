@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Navigate, useNavigate, useParams, Link } from 'react-router-dom'
-import { Plus, GitBranch, ArrowUp, ArrowLeft, Trash2 } from 'lucide-react'
+import { Plus, GitBranch, ArrowUp, ArrowLeft, Trash2, Loader2 } from 'lucide-react'
 import { api } from '../api/client.js'
 import { askRepository } from '../api/rag.js'
 import ChatBubble, { TypingDots } from '../components/ask/ChatBubble.jsx'
@@ -37,12 +37,6 @@ function formatChatDate(iso) {
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   }
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
-}
-
-// Textarea auto-grow (max 120px) — UI-only helper
-function autoGrow(el) {
-  el.style.height = 'auto'
-  el.style.height = `${Math.min(el.scrollHeight, 120)}px`
 }
 
 export default function AskRepoChat() {
@@ -230,7 +224,7 @@ export default function AskRepoChat() {
   const canSend = input.trim().length > 0
 
   return (
-    <div className="h-screen bg-bg-base text-text-primary">
+    <div className="page-enter h-screen bg-bg-base text-text-primary">
       {/* Shared app sidebar (Ask AI active) */}
       <DashboardSidebar userEmail={userEmail} displayName={displayName} />
 
@@ -393,9 +387,11 @@ export default function AskRepoChat() {
               <textarea
                 rows={1}
                 value={input}
-                onChange={(e) => {
-                  setInput(e.target.value)
-                  autoGrow(e.target)
+                onChange={(e) => setInput(e.target.value)}
+                onInput={(e) => {
+                  // Sirf height adjust — auto-grow (max 120px), onChange/onKeyDown untouched
+                  e.target.style.height = 'auto'
+                  e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`
                 }}
                 onKeyDown={(e) => {
                   // Enter → send, Shift+Enter → newline
@@ -412,11 +408,13 @@ export default function AskRepoChat() {
                 type="submit"
                 disabled={loading || typing || !canSend}
                 className={`shrink-0 rounded-xl p-2 transition-colors ${
-                  canSend ? 'bg-primary text-white hover:bg-primary/90' : 'bg-bg-surface-elevated text-text-muted'
+                  typing || canSend
+                    ? 'bg-primary text-white hover:bg-primary/90'
+                    : 'bg-bg-surface-elevated text-text-muted'
                 }`}
                 aria-label="Send"
               >
-                <ArrowUp size={16} />
+                {typing ? <Loader2 size={16} className="animate-spin" /> : <ArrowUp size={16} />}
               </button>
             </form>
             <p className="mt-2 text-center text-xs text-text-muted">

@@ -107,7 +107,7 @@ function Landing() {
   }
 
   return (
-    <div className="min-h-screen bg-bg-base text-text-primary">
+    <div className="page-enter min-h-screen bg-bg-base text-text-primary">
       {/* ── 1. Navbar — sticky, blur backdrop ── */}
       <header className="sticky top-0 z-40 border-b border-border/70 bg-bg-base/75 backdrop-blur-lg">
         <div className="mx-auto flex h-16 max-w-[1440px] items-center justify-between px-10">

@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import {
   ArrowLeft,
   Copy,
+  Check,
   User,
   Clock,
   ExternalLink,
@@ -145,7 +146,7 @@ function CommitDetail() {
     const full = analysis?.sha || shaParam || ''
     navigator.clipboard?.writeText(full).then(() => {
       setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+      setTimeout(() => setCopied(false), 2000)
     })
   }
 
@@ -181,7 +182,7 @@ function CommitDetail() {
   }
 
   return (
-    <div className="min-h-screen bg-bg-base text-text-primary">
+    <div className="page-enter min-h-screen bg-bg-base text-text-primary">
       {/* ── Shared sidebar ── */}
       <DashboardSidebar userEmail="" displayName="" />
 
@@ -231,10 +232,10 @@ function CommitDetail() {
                       <button
                         type="button"
                         onClick={copySha}
-                        className="relative text-text-muted transition-colors hover:text-primary"
+                        className={`relative transition-colors ${copied ? 'text-success' : 'text-text-muted hover:text-primary'}`}
                         title="Copy SHA"
                       >
-                        <Copy size={12} />
+                        {copied ? <Check size={12} /> : <Copy size={12} />}
                         {copied && (
                           <span className="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-bg-surface-elevated px-2 py-0.5 text-xs text-success">
                             Copied!

@@ -69,7 +69,7 @@ export default function AskRepoPicker() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-bg-base text-text-primary">
+    <div className="page-enter min-h-screen bg-bg-base text-text-primary">
       {/* Shared sidebar */}
       <DashboardSidebar userEmail={userEmail} displayName={loading ? '' : displayName} />
 
