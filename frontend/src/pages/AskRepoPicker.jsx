@@ -1,41 +1,38 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { MessageSquare, Sparkles } from 'lucide-react'
+import { GitBranch, ArrowRight, Sparkles } from 'lucide-react'
 import { api } from '../api/client.js'
-import DashboardShell from '../components/DashboardShell.jsx'
+import DashboardSidebar from '../components/dashboard/DashboardSidebar.jsx'
 import FoxLogo from '../components/FoxLogo.jsx'
 import { getDisplayName } from '../utils/displayName.js'
 import { listChatsForRepo, migrateLegacyChats } from '../utils/askChatStorage.js'
 
+// Repo card — click pe existing navigation (/dashboard/ask/:id) chalti hai
 function RepoCard({ repo, chatCount }) {
   return (
     <Link
       to={`/dashboard/ask/${repo.id}`}
-      className="group flex flex-col rounded-xl border border-border bg-surface p-5 transition-colors hover:border-primary/50 hover:bg-surface-hover"
+      className="group flex items-center gap-4 rounded-xl border border-border bg-bg-surface p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary hover:bg-bg-surface-elevated"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-mono text-sm font-semibold text-primary-light">
-            {repo.full_name}
-          </p>
-          <p className="mt-1 text-xs text-muted">
-            {chatCount === 0
-              ? 'No chats yet — start one'
-              : `${chatCount} chat${chatCount === 1 ? '' : 's'}`}
-          </p>
-        </div>
-        <span className="rounded-lg bg-primary/10 p-2 text-primary transition-colors group-hover:bg-primary/20">
-          <MessageSquare size={18} />
-        </span>
+      <GitBranch size={20} className="shrink-0 text-violet" />
+      <div className="min-w-0 flex-1">
+        <p className="truncate font-semibold text-text-primary">{repo.full_name}</p>
+        <p className="mt-0.5 text-xs text-text-muted">
+          {chatCount === 0
+            ? 'New conversation'
+            : `${chatCount} chat session${chatCount === 1 ? '' : 's'}`}
+        </p>
       </div>
-      <p className="mt-4 text-sm text-secondary">
-        Ask questions about commits, diffs, and analysis for this repository only.
-      </p>
+      <ArrowRight
+        size={18}
+        className="shrink-0 text-text-muted transition-colors group-hover:text-primary"
+      />
     </Link>
   )
 }
 
 export default function AskRepoPicker() {
+  // ⚠️ Data logic (useEffect, fetch, state) bilkul as-is hai.
   const [repos, setRepos] = useState([])
   const [userEmail, setUserEmail] = useState('')
   const [displayName, setDisplayName] = useState('')
@@ -72,54 +69,90 @@ export default function AskRepoPicker() {
   }, [])
 
   return (
-    <DashboardShell userEmail={userEmail} displayName={displayName}>
-      <div className="mb-8 text-center">
-        <FoxLogo size={48} className="mx-auto animate-float" />
-        <p className="mt-4 font-mono text-xs uppercase tracking-widest text-primary-light">Ask AI</p>
-        <h1 className="mt-2 font-display text-2xl font-bold sm:text-3xl">Choose a repository</h1>
-        <p className="mx-auto mt-2 max-w-md text-sm text-secondary">
-          Each repo has its own chat room. Pick one to start or continue a conversation about that
-          codebase.
-        </p>
+    <div className="min-h-screen bg-bg-base text-text-primary">
+      {/* Shared sidebar */}
+      <DashboardSidebar userEmail={userEmail} displayName={loading ? '' : displayName} />
+
+      <div className="ml-14">
+        {/* Top bar */}
+        <header className="sticky top-0 z-30 flex h-14 items-center border-b border-border bg-bg-base/85 px-6 backdrop-blur-md">
+          <h1 className="font-display text-lg font-semibold text-text-primary">Ask AI</h1>
+        </header>
+
+        {/* Content — centered 600px */}
+        <main className="mx-auto max-w-[600px] px-6 py-10">
+          {/* Header: fox with glow + title + subtitle */}
+          <div className="text-center">
+            <div className="relative mx-auto flex h-[120px] w-[120px] items-center justify-center">
+              <div
+                className="pointer-events-none absolute inset-0 rounded-full"
+                style={{
+                  background: 'radial-gradient(circle, var(--primary-glow) 0%, transparent 70%)',
+                }}
+              />
+              <FoxLogo size={64} className="relative animate-float" />
+            </div>
+            <h2 className="mt-2 font-display text-2xl font-bold text-text-primary">Ask AI</h2>
+            <p className="mx-auto mt-2 max-w-md text-sm text-text-secondary">
+              Ask anything about your codebase. Powered by RAG — answers grounded in your actual
+              code.
+            </p>
+          </div>
+
+          {error && (
+            <div className="mt-8 rounded-lg border border-danger/40 bg-danger/10 p-3 text-sm text-danger">
+              {error}
+            </div>
+          )}
+
+          {/* Repo selection */}
+          <p className="mb-3 mt-10 font-mono text-xs uppercase tracking-widest text-text-secondary">
+            Choose a repository
+          </p>
+
+          {loading ? (
+            <div className="space-y-3">
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-4 rounded-xl border border-border bg-bg-surface p-4"
+                >
+                  <div className="h-5 w-5 animate-pulse rounded bg-bg-surface-elevated" />
+                  <div className="flex-1">
+                    <div className="h-4 w-1/2 animate-pulse rounded bg-bg-surface-elevated" />
+                    <div className="mt-2 h-3 w-1/4 animate-pulse rounded bg-bg-surface-elevated" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : repos.length === 0 && !error ? (
+            // Empty state
+            <div className="flex flex-col items-center rounded-xl border border-dashed border-border bg-bg-surface p-10 text-center">
+              <FoxLogo size={48} className="opacity-40" />
+              <p className="mt-4 font-semibold text-text-primary">No repositories connected</p>
+              <p className="mt-1 text-sm text-text-secondary">
+                Connect a repository first to start asking questions
+              </p>
+              <Link
+                to="/dashboard/repositories"
+                className="mt-5 inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90"
+              >
+                Go to Repositories
+              </Link>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {repos.map((repo) => (
+                <RepoCard key={repo.id} repo={repo} chatCount={listChatsForRepo(repo.id).length} />
+              ))}
+            </div>
+          )}
+
+          <p className="mt-8 flex items-center justify-center gap-1.5 font-mono text-xs text-text-muted">
+            <Sparkles size={12} /> Chats are saved in this browser per repository
+          </p>
+        </main>
       </div>
-
-      {error && (
-        <div className="mb-6 rounded-lg border border-danger/40 bg-danger/10 p-3 text-sm text-danger">
-          {error}
-        </div>
-      )}
-
-      {loading && (
-        <p className="text-center text-sm text-secondary">Loading repositories…</p>
-      )}
-
-      {!loading && repos.length === 0 && !error && (
-        <div className="rounded-xl border border-dashed border-border bg-surface/50 p-10 text-center">
-          <p className="text-secondary">No connected repositories yet.</p>
-          <Link
-            to="/dashboard/repositories"
-            className="mt-3 inline-block text-sm font-medium text-primary hover:underline"
-          >
-            Connect a repo first →
-          </Link>
-        </div>
-      )}
-
-      {!loading && repos.length > 0 && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {repos.map((repo) => (
-            <RepoCard
-              key={repo.id}
-              repo={repo}
-              chatCount={listChatsForRepo(repo.id).length}
-            />
-          ))}
-        </div>
-      )}
-
-      <p className="mt-8 flex items-center justify-center gap-1.5 font-mono text-xs text-muted">
-        <Sparkles size={12} /> Chats are saved in this browser per repository
-      </p>
-    </DashboardShell>
+    </div>
   )
 }

@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, MessageSquare, Plus, Send, Sparkles, Trash2 } from 'lucide-react'
+import { Navigate, useNavigate, useParams, Link } from 'react-router-dom'
+import { Plus, GitBranch, ArrowUp, ArrowLeft, Trash2 } from 'lucide-react'
 import { api } from '../api/client.js'
 import { askRepository } from '../api/rag.js'
 import ChatBubble, { TypingDots } from '../components/ask/ChatBubble.jsx'
-import DashboardShell from '../components/DashboardShell.jsx'
+import DashboardSidebar from '../components/dashboard/DashboardSidebar.jsx'
 import FoxLogo from '../components/FoxLogo.jsx'
-import { SUGGESTED_QUESTIONS } from '../data/mock.js'
 import { getDisplayName } from '../utils/displayName.js'
 import {
   chatTitleFromMessage,
@@ -17,6 +16,14 @@ import {
   migrateLegacyChats,
   saveChat,
 } from '../utils/askChatStorage.js'
+
+// Empty-state ke suggested questions (display-only strings, existing send() call karte hain)
+const CHAT_SUGGESTIONS = [
+  'What are the most common issues in this repo?',
+  'Which commit had the highest risk score?',
+  'Are there any N+1 queries in my codebase?',
+  'What files get changed most often?',
+]
 
 function formatChatDate(iso) {
   if (!iso) return ''
@@ -32,7 +39,14 @@ function formatChatDate(iso) {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
 }
 
+// Textarea auto-grow (max 120px) — UI-only helper
+function autoGrow(el) {
+  el.style.height = 'auto'
+  el.style.height = `${Math.min(el.scrollHeight, 120)}px`
+}
+
 export default function AskRepoChat() {
+  // ⚠️ Neeche ka saara chat/localStorage/API logic AS-IS hai. Sirf JSX + input restyle.
   const { repoId, chatId } = useParams()
   const navigate = useNavigate()
   const endRef = useRef(null)
@@ -213,124 +227,129 @@ export default function AskRepoChat() {
     return <Navigate to="/dashboard/ask" replace />
   }
 
+  const canSend = input.trim().length > 0
+
   return (
-    <DashboardShell userEmail={userEmail} displayName={displayName}>
-      <div className="mb-4">
-        <Link
-          to="/dashboard/ask"
-          className="inline-flex items-center gap-1.5 text-sm text-secondary hover:text-content"
-        >
-          <ArrowLeft size={15} /> All repositories
-        </Link>
-        <p className="mt-3 font-mono text-xs uppercase tracking-widest text-primary-light">Ask AI</p>
-        <h1 className="mt-1 truncate font-display text-2xl font-bold">
-          {repo?.full_name || '…'}
-        </h1>
-      </div>
+    <div className="h-screen bg-bg-base text-text-primary">
+      {/* Shared app sidebar (Ask AI active) */}
+      <DashboardSidebar userEmail={userEmail} displayName={displayName} />
 
-      {error && (
-        <div className="mb-4 rounded-lg border border-danger/40 bg-danger/10 p-3 text-sm text-danger">
-          {error}
-        </div>
-      )}
+      <div className="ml-14 flex h-screen">
+        {/* ── LEFT: chat history sidebar (260px) ── */}
+        <aside className="flex w-[260px] shrink-0 flex-col border-r border-border bg-bg-surface p-4">
+          <Link
+            to="/dashboard/ask"
+            className="mb-3 inline-flex items-center gap-1.5 text-xs text-text-muted transition-colors hover:text-primary"
+          >
+            <ArrowLeft size={13} /> All repositories
+          </Link>
 
-      <div className="grid h-[calc(100vh-15rem)] gap-4 lg:grid-cols-[260px_1fr]">
-        <aside className="flex max-h-48 flex-col rounded-xl border border-border bg-surface lg:max-h-none">
-          <div className="border-b border-border p-3">
-            <button
-              type="button"
-              onClick={startNewChat}
-              disabled={typing}
-              className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-bg px-3 py-2 text-sm font-medium text-content hover:bg-surface-hover disabled:opacity-50"
-            >
-              <Plus size={15} /> New chat
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={startNewChat}
+            disabled={typing}
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary/90 disabled:opacity-50"
+          >
+            <Plus size={15} /> New Chat
+          </button>
+          <p className="mt-2 truncate font-mono text-xs text-text-muted">{repo?.full_name || '…'}</p>
 
-          <div className="flex-1 overflow-y-auto p-2">
-            {chatList.length === 0 && (
-              <p className="px-2 py-3 text-xs text-muted">No chats yet. Start typing below.</p>
-            )}
-            <ul className="space-y-0.5">
-              {chatList.map((c) => {
-                const active = chatId === c.id
-                return (
-                  <li key={c.id}>
-                    <div
-                      className={`group flex w-full items-center gap-1 rounded-lg transition-colors ${
-                        active ? 'bg-primary/15' : 'hover:bg-surface-hover'
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => openChat(c.id)}
-                        className={`flex min-w-0 flex-1 items-center gap-2 px-2.5 py-2 text-left text-sm ${
-                          active ? 'text-content' : 'text-secondary hover:text-content'
+          {/* Chat session list */}
+          <div className="mt-4 flex-1 overflow-y-auto">
+            {chatList.length === 0 ? (
+              <p className="mt-4 text-center text-xs text-text-muted">No previous chats</p>
+            ) : (
+              <ul className="space-y-1">
+                {chatList.map((c) => {
+                  const active = chatId === c.id
+                  return (
+                    <li key={c.id}>
+                      <div
+                        className={`group flex items-center gap-1 rounded-lg border-l-2 transition-colors ${
+                          active
+                            ? 'border-primary bg-primary/10'
+                            : 'border-transparent hover:bg-bg-surface-elevated'
                         }`}
                       >
-                        <MessageSquare size={14} className="shrink-0 opacity-70" />
-                        <span className="min-w-0 flex-1 truncate">{c.title}</span>
-                        <span className="shrink-0 text-[10px] text-muted">
-                          {formatChatDate(c.updatedAt)}
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteChat(c.id)}
-                        className="mr-1 shrink-0 rounded p-1 text-muted opacity-0 hover:text-danger group-hover:opacity-100"
-                        aria-label="Delete chat"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  </li>
-                )
-              })}
-            </ul>
-          </div>
-
-          <div className="hidden border-t border-border p-3 lg:block">
-            <p className="mb-2 font-mono text-xs uppercase tracking-widest text-muted">Suggested</p>
-            <div className="space-y-1">
-              {SUGGESTED_QUESTIONS.slice(0, 3).map((q) => (
-                <button
-                  key={q}
-                  type="button"
-                  onClick={() => send(q)}
-                  disabled={typing || loading}
-                  className="flex w-full items-center gap-2 truncate rounded-lg px-2 py-1.5 text-left text-xs text-secondary hover:bg-surface-hover hover:text-content disabled:opacity-50"
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
+                        <button
+                          type="button"
+                          onClick={() => openChat(c.id)}
+                          className={`flex min-w-0 flex-1 flex-col px-3 py-2 text-left ${
+                            active ? 'text-text-primary' : 'text-text-secondary'
+                          }`}
+                        >
+                          <span className="truncate text-sm">{c.title}</span>
+                          <span className="text-[10px] text-text-muted">
+                            {formatChatDate(c.updatedAt)}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteChat(c.id)}
+                          className="mr-1 shrink-0 rounded p-1 text-text-muted opacity-0 transition-opacity hover:text-danger group-hover:opacity-100"
+                          aria-label="Delete chat"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
           </div>
         </aside>
 
-        <section className="flex min-h-[320px] flex-col rounded-xl border border-border bg-bg">
-          <div className="flex-1 space-y-4 overflow-y-auto p-5">
-            {loading && (
-              <p className="text-center text-sm text-secondary">Loading…</p>
+        {/* ── RIGHT: chat area ── */}
+        <section className="flex flex-1 flex-col">
+          {/* Chat top bar */}
+          <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-6">
+            <span className="flex items-center gap-2 font-semibold text-text-primary">
+              <GitBranch size={16} className="text-violet" /> {repo?.full_name || '…'}
+            </span>
+            <span className="text-xs italic text-text-muted">Powered by Groq + pgvector</span>
+          </div>
+
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-6">
+            {error && (
+              <div className="mb-4 rounded-lg border border-danger/40 bg-danger/10 p-3 text-sm text-danger">
+                {error}
+              </div>
             )}
 
+            {loading && <p className="text-center text-sm text-text-secondary">Loading…</p>}
+
+            {/* EMPTY STATE — fox + thought bubble + suggestions */}
             {!loading && messages.length === 0 && !typing && (
               <div className="flex h-full flex-col items-center justify-center text-center">
-                <FoxLogo size={52} className="animate-float" />
-                <h2 className="mt-4 font-display text-lg font-bold">
-                  {isDraft ? 'New chat' : 'Continue this chat'}
+                <div className="animate-float relative">
+                  {/* Thought bubble — 3 circles above-right */}
+                  <div className="absolute -right-7 -top-8 flex flex-col items-center gap-1">
+                    <span className="h-3 w-3 rounded-full border border-border bg-bg-surface-elevated" />
+                    <span className="h-2 w-2 rounded-full border border-border bg-bg-surface-elevated" />
+                    <span className="h-1.5 w-1.5 rounded-full border border-border bg-bg-surface-elevated" />
+                  </div>
+                  <FoxLogo size={80} />
+                </div>
+
+                <h2 className="mt-6 font-display text-lg font-semibold text-text-primary">
+                  Hi, I&apos;m CommitIQ AI
                 </h2>
-                <p className="mt-1 max-w-sm text-sm text-secondary">
-                  Questions use indexed diffs and analysis from{' '}
-                  <span className="font-mono text-primary-light">{repo?.full_name}</span> only.
+                <p className="mt-2 max-w-[360px] text-sm text-text-secondary">
+                  Ask me anything about the code in this repository. I&apos;ll answer using your
+                  actual commit diffs and analysis findings.
                 </p>
-                <div className="mt-6 flex flex-wrap justify-center gap-2">
-                  {SUGGESTED_QUESTIONS.slice(0, 4).map((q) => (
+
+                <p className="mt-6 text-xs text-text-muted">Try asking:</p>
+                <div className="mt-2 flex max-w-[540px] flex-wrap justify-center gap-2">
+                  {CHAT_SUGGESTIONS.map((q) => (
                     <button
                       key={q}
                       type="button"
                       onClick={() => send(q)}
                       disabled={typing || loading}
-                      className="rounded-full border border-border bg-surface px-3.5 py-1.5 text-sm text-secondary transition-colors hover:border-primary/50 hover:text-content disabled:opacity-50"
+                      className="rounded-full border border-border bg-bg-surface px-4 py-2 text-sm text-text-secondary transition-colors hover:border-primary hover:text-primary disabled:opacity-50"
                     >
                       {q}
                     </button>
@@ -339,48 +358,73 @@ export default function AskRepoChat() {
               </div>
             )}
 
-            {messages.map((m, i) => (
-              <ChatBubble key={i} role={m.role} text={m.text} sources={m.sources} />
-            ))}
+            {/* Messages list */}
+            {messages.length > 0 && (
+              <div className="space-y-4">
+                {messages.map((m, i) => (
+                  <ChatBubble key={i} role={m.role} text={m.text} sources={m.sources} />
+                ))}
 
-            {typing && (
-              <div className="flex justify-start">
-                <div className="rounded-2xl rounded-bl-none border border-border bg-surface px-4 py-3">
-                  <TypingDots />
-                </div>
+                {/* Typing indicator */}
+                {typing && (
+                  <div className="flex flex-col items-start">
+                    <span className="mb-1 flex items-center gap-1.5 text-xs text-text-muted">
+                      <FoxLogo size={16} /> CommitIQ AI
+                    </span>
+                    <div className="rounded-2xl rounded-bl-none border border-border bg-bg-surface px-4 py-3">
+                      <TypingDots />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             <div ref={endRef} />
           </div>
 
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              send()
-            }}
-            className="flex gap-2 border-t border-border p-4"
-          >
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={`Ask about ${repo?.full_name || 'this repo'}…`}
-              disabled={loading || typing}
-              className="flex-1 rounded-lg border border-border bg-surface px-3.5 py-2.5 text-sm text-content outline-none focus:border-primary focus:ring-2 focus:ring-primary/30 disabled:opacity-60"
-            />
-            <button
-              type="submit"
-              disabled={loading || typing}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-60"
+          {/* Input area */}
+          <div className="shrink-0 border-t border-border bg-bg-base px-6 py-4">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                send()
+              }}
+              className="flex items-end gap-3 rounded-2xl border border-border bg-bg-surface px-4 py-3"
             >
-              <Send size={15} /> Send
-            </button>
-          </form>
+              <textarea
+                rows={1}
+                value={input}
+                onChange={(e) => {
+                  setInput(e.target.value)
+                  autoGrow(e.target)
+                }}
+                onKeyDown={(e) => {
+                  // Enter → send, Shift+Enter → newline
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    send()
+                  }
+                }}
+                placeholder="Ask about this repository..."
+                disabled={loading || typing}
+                className="max-h-[120px] flex-1 resize-none bg-transparent text-sm text-text-primary outline-none placeholder:text-text-muted disabled:opacity-60"
+              />
+              <button
+                type="submit"
+                disabled={loading || typing || !canSend}
+                className={`shrink-0 rounded-xl p-2 transition-colors ${
+                  canSend ? 'bg-primary text-white hover:bg-primary/90' : 'bg-bg-surface-elevated text-text-muted'
+                }`}
+                aria-label="Send"
+              >
+                <ArrowUp size={16} />
+              </button>
+            </form>
+            <p className="mt-2 text-center text-xs text-text-muted">
+              CommitIQ AI can make mistakes. Verify important information.
+            </p>
+          </div>
         </section>
       </div>
-
-      <p className="mt-3 flex items-center gap-1.5 font-mono text-xs text-muted">
-        <Sparkles size={12} /> Chats saved in this browser · one repo per room
-      </p>
-    </DashboardShell>
+    </div>
   )
 }
