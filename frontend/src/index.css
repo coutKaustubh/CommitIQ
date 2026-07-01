@@ -1,27 +1,59 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
 @import 'tailwindcss';
 
-/* CommitIQ design tokens — violet on near-black, DevTrack-inspired */
+/* Ember Fox palette — CSS custom properties (source of truth) */
+:root {
+  --bg-base: #0B0B0F;
+  --bg-surface: #16151C;
+  --bg-surface-elevated: #1E1C26;
+  --border: #2A2832;
+
+  --primary: #FF6A3D;
+  --primary-glow: rgba(255, 106, 61, 0.18);
+  --secondary: #8B5CF6;
+  --accent-lime: #C8FF4D;
+
+  --text-primary: #F2EFEA;
+  --text-secondary: #9C98A3;
+  --text-muted: #5C5966;
+
+  --success: #4ADE80;
+  --warning: #FBBF24;
+  --danger: #FB5A5A;
+
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+/* Tailwind v4 @theme — maps tokens to utility classes (bg-primary, text-secondary, etc.) */
 @theme {
-  --color-bg: #0d1117;
-  --color-surface: #161b22;
-  --color-surface-hover: #1c2128;
-  --color-border: #30363d;
+  /* Backward-compat aliases used across dashboard pages */
+  --color-bg: var(--bg-base);
+  --color-surface: var(--bg-surface);
+  --color-surface-hover: var(--bg-surface-elevated);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-light: #FF8F6B;
+  --color-content: var(--text-primary);
+  --color-secondary: var(--text-secondary);
+  --color-muted: var(--text-muted);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
 
-  --color-primary: #7c3aed;
-  --color-primary-light: #a78bfa;
-
-  --color-content: #e6edf3;
-  --color-secondary: #8b949e;
-  --color-muted: #484f58;
-
-  --color-success: #3fb950;
-  --color-warning: #d29922;
-  --color-danger: #f85149;
+  /* Explicit Ember Fox tokens */
+  --color-bg-base: var(--bg-base);
+  --color-bg-surface: var(--bg-surface);
+  --color-bg-surface-elevated: var(--bg-surface-elevated);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-primary-glow: var(--primary-glow);
+  --color-violet: var(--secondary);
+  --color-accent-lime: var(--accent-lime);
 
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --font-mono: var(--font-mono);
 }
 
 * {
@@ -33,28 +65,107 @@ html {
 }
 
 body {
-  margin: 0;                              
+  margin: 0;
   min-height: 100vh;
-  background: var(--color-bg);
-  color: var(--color-content);
+  background: var(--bg-base);
+  color: var(--text-primary);
   font-family: var(--font-sans);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Violet glow used behind hero / preview cards */
+/* Ember glow behind hero cards / fox scene */
+.glow-ember {
+  box-shadow:
+    0 0 0 1px var(--primary-glow),
+    0 0 80px -20px rgba(255, 106, 61, 0.45);
+}
+
+/* Legacy alias — dashboard pages still reference glow-violet */
 .glow-violet {
-  box-shadow: 0 0 0 1px rgba(124, 58, 237, 0.25), 0 0 80px -20px rgba(124, 58, 237, 0.5);
+  box-shadow:
+    0 0 0 1px var(--primary-glow),
+    0 0 80px -20px rgba(255, 106, 61, 0.45);
 }
 
 .text-glow {
-  text-shadow: 0 0 40px rgba(124, 58, 237, 0.6);
+  text-shadow: 0 0 40px rgba(255, 106, 61, 0.55);
 }
 
-/* Subtle dotted grid backdrop */
+/* Subtle dotted grid backdrop — ember tint */
 .bg-grid {
-  background-image: radial-gradient(rgba(124, 58, 237, 0.08) 1px, transparent 1px);
+  background-image: radial-gradient(rgba(255, 106, 61, 0.06) 1px, transparent 1px);
   background-size: 28px 28px;
+}
+
+/* PULSE word — hover pe bulge/spring effect (pure CSS, no framer-motion) */
+.pulse-word {
+  display: inline-block;
+  color: var(--primary);
+  cursor: default;
+  transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform-origin: center bottom;
+}
+.pulse-word:hover {
+  transform: scale(1.14);
+}
+
+/* Floating hero feature cards — hover pe thoda upar uth jaye */
+.float-card {
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease;
+}
+.float-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.5);
+}
+
+/* Scroll-reveal — JS adds .is-visible when section viewport me aata hai */
+.reveal-on-scroll {
+  opacity: 0;
+  transform: translateY(28px);
+  transition:
+    opacity 0.65s ease-out,
+    transform 0.65s ease-out;
+}
+.reveal-on-scroll.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Ember campfire — soft pulsing glow (smoke/embers feel) */
+@keyframes ember-pulse {
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+.animate-ember-pulse {
+  animation: ember-pulse 3s ease-in-out infinite;
+}
+
+/* Floating ember particles — upar jaate hue fade out */
+@keyframes ember-rise {
+  0% {
+    opacity: 0.8;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-48px) scale(0.4);
+  }
+}
+.ember-particle {
+  position: absolute;
+  border-radius: 50%;
+  background: var(--primary);
+  animation: ember-rise 3s ease-out infinite;
 }
 
 @keyframes float {
@@ -74,11 +185,11 @@ body {
   0%,
   100% {
     opacity: 1;
-    filter: drop-shadow(0 0 6px rgba(124, 58, 237, 0.7));
+    filter: drop-shadow(0 0 6px rgba(255, 106, 61, 0.7));
   }
   50% {
     opacity: 0.6;
-    filter: drop-shadow(0 0 18px rgba(124, 58, 237, 0.9));
+    filter: drop-shadow(0 0 18px rgba(255, 106, 61, 0.9));
   }
 }
 .animate-pulse-glow {
@@ -135,17 +246,29 @@ body {
   }
 }
 
+/* How-it-works connector line between steps */
+.step-connector {
+  background: linear-gradient(90deg, var(--border), var(--primary), var(--border));
+  opacity: 0.5;
+}
+
+/* Connected section bullet — left border accent */
+.bullet-accent {
+  border-left: 3px solid var(--primary);
+  padding-left: 1rem;
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--color-bg);
+  background: var(--bg-base);
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-border);
+  background: var(--border);
   border-radius: 6px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3d4753;
+  background: #3d3a48;
 }
