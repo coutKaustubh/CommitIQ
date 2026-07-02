@@ -22,6 +22,20 @@ logger = logging.getLogger(__name__)
 _embedding_model = None
 
 
+class EmbeddingUnavailableError(RuntimeError):
+    """Raised when local or remote embedding cannot run (often low RAM on Windows)."""
+
+
+def _running_in_celery_worker() -> bool:
+    try:
+        from celery import current_task
+
+        request = getattr(current_task, "request", None)
+        return bool(request and getattr(request, "id", None))
+    except ImportError:
+        return False
+
+
 # ---------------------------------------------------------------------------
 # Chunking
 # ---------------------------------------------------------------------------
@@ -170,12 +184,61 @@ def _get_embedding_model():
     """Lazy-load SentenceTransformer once per worker process."""
     global _embedding_model
     if _embedding_model is None:
+        from core.ml_env import configure_ml_runtime
         from sentence_transformers import SentenceTransformer
-        #sentence_transformers is a library for sentence embedding
 
+        configure_ml_runtime()
         logger.info("Loading embedding model: %s", settings.RAG_EMBEDDING_MODEL)
-        _embedding_model = SentenceTransformer(settings.RAG_EMBEDDING_MODEL)
+        _embedding_model = SentenceTransformer(
+            settings.RAG_EMBEDDING_MODEL,
+            device="cpu",
+        )
     return _embedding_model
+
+
+def _embed_texts_local(texts: list[str]) -> list[list[float]]:
+    """Embed in the current process (Celery worker or explicit local fallback)."""
+    if not texts:
+        return []
+
+    try:
+        model = _get_embedding_model()
+        embeddings = model.encode(
+            texts,
+            normalize_embeddings=True,
+            batch_size=min(8, len(texts)),
+            show_progress_bar=False,
+            convert_to_numpy=True,
+        )
+        return [vector.tolist() for vector in embeddings]
+    except (MemoryError, OSError) as exc:
+        raise EmbeddingUnavailableError(
+            "Embedding model could not load — your machine may be low on RAM. "
+            "Start Redis and run `celery -A core worker -l info --pool=solo`, "
+            "then retry Ask AI so embeddings run in the worker instead of runserver."
+        ) from exc
+
+
+def _embed_texts_via_celery(texts: list[str]) -> list[list[float]]:
+    """Run embedding in the Celery worker to keep runserver memory-light."""
+    from celery.exceptions import TimeoutError as CeleryTimeoutError
+
+    from .tasks import embed_texts_for_rag
+
+    timeout = settings.RAG_EMBED_TIMEOUT_SECONDS
+    try:
+        async_result = embed_texts_for_rag.apply_async(args=[texts])
+        return async_result.get(timeout=timeout)
+    except CeleryTimeoutError as exc:
+        raise EmbeddingUnavailableError(
+            "Embedding worker timed out. Ensure Redis is running and start "
+            "`celery -A core worker -l info --pool=solo` in another terminal."
+        ) from exc
+    except Exception as exc:
+        raise EmbeddingUnavailableError(
+            "Could not reach the embedding worker. Start Redis and run "
+            "`celery -A core worker -l info --pool=solo`, then retry."
+        ) from exc
 
 
 def embed_text(text: str) -> list[float]:
@@ -197,9 +260,10 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
     if not texts:
         return []
 
-    model = _get_embedding_model()
-    embeddings = model.encode(texts, normalize_embeddings=True)
-    return [vector.tolist() for vector in embeddings]
+    if settings.RAG_EMBED_VIA_CELERY and not _running_in_celery_worker():
+        return _embed_texts_via_celery(texts)
+
+    return _embed_texts_local(texts)
 
 #
 """

@@ -219,3 +219,11 @@ RAG_TOP_K = int(os.getenv("RAG_TOP_K", "5"))
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 RAG_LLM_TEMPERATURE = float(os.getenv("RAG_LLM_TEMPERATURE", "0.45"))
+# Ask AI query embeddings run in the Celery worker by default so runserver does not
+# load a second copy of SentenceTransformer (avoids WinError 1450 on Windows).
+RAG_EMBED_VIA_CELERY = os.getenv("RAG_EMBED_VIA_CELERY", "true").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+RAG_EMBED_TIMEOUT_SECONDS = int(os.getenv("RAG_EMBED_TIMEOUT_SECONDS", "120"))

@@ -185,6 +185,18 @@ def ingest_commit_for_rag(self, commit_id):
         raise self.retry(exc=exc)
 
 
+@shared_task(name="repos.embed_texts_for_rag")
+def embed_texts_for_rag(texts: list[str]) -> list[list[float]]:
+    """
+    Embed text batches in the Celery worker.
+
+    Ask AI calls this from runserver so only one process loads SentenceTransformer.
+    """
+    from .rag_services import _embed_texts_local
+
+    return _embed_texts_local(texts)
+
+
 def enqueue_commit_analysis(commit):
     """
     Create (or reuse) an AnalysisJob and queue process_commit if appropriate.

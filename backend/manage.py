@@ -3,6 +3,10 @@
 import os
 import sys
 
+from core.ml_env import configure_ml_runtime
+
+configure_ml_runtime()
+
 
 def main():
     """Run administrative tasks."""

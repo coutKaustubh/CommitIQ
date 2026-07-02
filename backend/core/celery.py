@@ -10,6 +10,10 @@ The worker process runs: celery -A core worker -l info
 
 import os
 
+from core.ml_env import configure_ml_runtime
+
+configure_ml_runtime()
+
 # Celery's main class — you create one app per Django project.
 from celery import Celery
 

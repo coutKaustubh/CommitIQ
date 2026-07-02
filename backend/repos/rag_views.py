@@ -10,7 +10,7 @@ from rest_framework.response import Response
 
 from core.throttling import AskAIRateThrottle
 
-from .rag_services import ask_commit, ask_repository
+from .rag_services import EmbeddingUnavailableError, ask_commit, ask_repository
 from .views import get_connected_repository, get_user_profile
 
 logger = logging.getLogger(__name__)
@@ -57,6 +57,8 @@ def ask_commit_view(request, sha):
 
     try:
         result = ask_commit(commit, question)
+    except EmbeddingUnavailableError as exc:
+        return Response({"error": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
     except RuntimeError as exc:
         return Response({"error": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
     except Exception:
@@ -104,6 +106,8 @@ def ask_repo(request, repo_id):
 
     try:
         result = ask_repository(repo, question)
+    except EmbeddingUnavailableError as exc:
+        return Response({"error": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
     except RuntimeError as exc:
         return Response({"error": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
     except Exception:
